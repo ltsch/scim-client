@@ -1,0 +1,43 @@
+# Node.js
+node_modules/
+package-lock.json
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Environment
+.env
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# IDE/editor
+.vscode/
+.idea/
+*.swp
+
+# Build output (if any)
+dist/
+build/
+
+# Misc
+*.bak
+*.tmp
+
+# Do NOT ignore vendor/ or any source files
+!vendor/
+!vendor/jquery-jsonview/
+!css/
+!js/
+!*.html
+!*.md
+!*.sh
+!*.py
+!env.example 

@@ -1,0 +1,42 @@
+{
+  "additionalProperties": true,
+  "errorMessage": {
+    "properties": {
+      "businessId": "GENERIC_REQUIRED_BUSINESSID",
+      "password": "GENERIC_REQUIRED_PASSWORD"
+    },
+    "required": {
+      "businessId": "GENERIC_REQUIRED_BUSINESSID",
+      "name": "GENERIC_REQUIRED_NAME"
+    }
+  },
+  "properties": {
+    "name": {
+      "format": "regex",
+      "maxLength": 255,
+      "minLength": 2,
+      "nullable": false,
+      "pattern": "^[a-zA-ZÀ-ÿ0-9][a-zA-ZÀ-ÿ0-9s_&+,:'`?#<>.-][^*()!]+$",
+      "type": "string"
+    },
+    "email": {
+      "format": "email",
+      "nullable": false,
+      "type": "string"
+    },
+    "roles": {
+        "format": "array",
+        "nullable": false,
+        "items": {
+            "type": "string"
+        },
+        "type": "array"
+      }
+  },
+  "required": [
+    "name",
+    "email",
+    "roles"
+  ],
+  "type": "object"
+}
