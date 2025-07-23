@@ -1,0 +1,36 @@
+version: '3.8'
+
+services:
+  scim-client:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      - NODE_ENV=production
+    volumes:
+      # Optional: mount nginx logs for debugging
+      - ./logs:/var/log/nginx
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    restart: unless-stopped
+
+  # Optional: Add a test SCIM server for development
+  test-scim-server:
+    image: python:3.9-alpine
+    ports:
+      - "8080:8080"
+    working_dir: /app
+    volumes:
+      - ./backup/simple-cors-proxy.py:/app/server.py
+    command: >
+      sh -c "pip install requests &&
+              python server.py 8080"
+    environment:
+      - PYTHONUNBUFFERED=1
+    profiles:
+      - test
+    restart: unless-stopped 

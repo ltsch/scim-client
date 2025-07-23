@@ -1,0 +1,19 @@
+version: '3.8'
+
+services:
+  scim-client-prod:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    volumes:
+      - /var/cache/nginx
+    environment:
+      - NGINX_HOST=localhost
+      - NGINX_PORT=8000
+    entrypoint: ["/start.sh"]
+    dns:
+      - 8.8.8.8
+      - 8.8.4.4
+      - 1.1.1.1 
