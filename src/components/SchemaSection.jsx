@@ -1,4 +1,22 @@
 import { useState, useEffect } from 'react';
+import ReactJson from 'react18-json-view';
+import Ajv from 'ajv';
+import scimSchemaSchema from '../utils/scim-schema-schema.json';
+
+const ajv = new Ajv({ allErrors: true, verbose: true });
+const validateSchema = ajv.compile(scimSchemaSchema);
+
+const getFieldHighlight = (path, errors) => {
+  if (!errors) return 'green';
+  // If any error matches this path, highlight red or yellow
+  for (const err of errors) {
+    if (err.instancePath === path) {
+      if (err.keyword === 'required') return 'red';
+      return 'yellow';
+    }
+  }
+  return 'green';
+};
 
 /**
  * Schema section component for displaying SCIM schema information
@@ -11,6 +29,8 @@ const SchemaSection = ({ apiClient, config }) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [expandedItems, setExpandedItems] = useState(new Set());
+  const [viewMode, setViewMode] = useState('raw'); // 'raw' or 'validated'
+  const [validationResults, setValidationResults] = useState([]);
 
   const fetchSchemas = async () => {
     if (!config?.endpoint) {
@@ -48,6 +68,18 @@ const SchemaSection = ({ apiClient, config }) => {
     }
   }, [config?.endpoint]);
 
+  useEffect(() => {
+    if (viewMode === 'validated' && schemas.length > 0) {
+      const results = schemas.map(schema => {
+        const valid = validateSchema(schema);
+        return { valid, errors: validateSchema.errors ? [...validateSchema.errors] : [] };
+      });
+      setValidationResults(results);
+    } else {
+      setValidationResults([]);
+    }
+  }, [viewMode, schemas]);
+
   const toggleExpanded = (id) => {
     setExpandedItems(prev => {
       const newSet = new Set(prev);
@@ -84,6 +116,13 @@ const SchemaSection = ({ apiClient, config }) => {
           >
             {loading ? 'Loading...' : 'Refresh'}
           </button>
+          <button
+            style={{ marginLeft: '1em' }}
+            onClick={() => setViewMode(viewMode === 'raw' ? 'validated' : 'raw')}
+            data-testid="toggle-schema-view"
+          >
+            {viewMode === 'raw' ? 'Show Validated View' : 'Show Raw JSON'}
+          </button>
         </div>
       </div>
 
@@ -110,7 +149,7 @@ const SchemaSection = ({ apiClient, config }) => {
           {schemas.map((schema, index) => {
             const id = getSchemaId(schema);
             const isExpanded = expandedItems.has(id);
-            
+            const validation = validationResults[index];
             return (
               <div key={id} className="schema-item" data-testid={`schema-item-${index}`}>
                 <div className="schema-header">
@@ -129,10 +168,58 @@ const SchemaSection = ({ apiClient, config }) => {
                 </div>
                 
                 {isExpanded && (
-                  <div className="schema-details" data-testid={`schema-details-${index}`}>
+                  <div className="schema-details" data-testid={`schema-details-${index}`}> 
+                    {viewMode === 'validated' && validation && (
+                      <div className="scim-validation-summary">
+                        <strong>Validation: </strong>
+                        {validation.valid ? (
+                          <span style={{ color: 'green' }}>Compliant</span>
+                        ) : (
+                          <span style={{ color: 'red' }}>Non-compliant</span>
+                        )}
+                        {validation.errors && validation.errors.length > 0 && (
+                          <ul style={{ marginTop: 8 }}>
+                            {validation.errors.map((err, i) => (
+                              <li key={i} style={{ color: err.keyword === 'required' ? 'red' : 'orange' }}>
+                                {err.instancePath || '/'}: {err.message}
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                      </div>
+                    )}
                     <div className="json-viewer">
                       <h4>Schema Definition:</h4>
-                      <pre>{formatJson(schema)}</pre>
+                      {viewMode === 'raw' ? (
+                        <pre>{JSON.stringify(schema, null, 2)}</pre>
+                      ) : (
+                        <ReactJson
+                          src={schema}
+                          name={false}
+                          enableClipboard={false}
+                          displayDataTypes={false}
+                          collapsed={2}
+                          style={{ fontSize: 14 }}
+                          theme={{
+                            base00: '#fff',
+                            base01: '#eee',
+                            base02: '#ddd',
+                            base03: '#444',
+                            base04: '#444',
+                            base05: '#444',
+                            base06: '#444',
+                            base07: '#444',
+                            base08: '#f00', // red
+                            base09: '#ff0', // yellow
+                            base0A: '#ff0', // yellow
+                            base0B: '#0f0', // green
+                            base0C: '#0ff',
+                            base0D: '#00f',
+                            base0E: '#a0f',
+                            base0F: '#f0f',
+                          }}
+                        />
+                      )}
                     </div>
                   </div>
                 )}

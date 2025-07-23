@@ -67,6 +67,9 @@ class CORSProxy(BaseHTTPRequestHandler):
     # Allowed HTTP methods for API calls
     ALLOWED_METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS']
     
+    # Strict allowlist for production domains
+    ALLOWED_PROD_ORIGINS = []  # e.g., ['scim-client.web.minn.info']
+
     def _is_local_development(self, origin):
         """Check if the origin is a local development environment"""
         if not origin:
@@ -74,41 +77,27 @@ class CORSProxy(BaseHTTPRequestHandler):
         return origin in self.LOCAL_ORIGINS or re.match(r'^https?://(localhost|127\.0\.0\.1):(8000|5174)$', origin)
     
     def _is_same_domain_request(self, origin, referer):
-        """Check if the request is from the same domain as the proxy"""
+        """Check if the request is from the same domain as the proxy (strict)"""
         if not origin:
             return False
-            
         try:
-            # Parse the origin URL
             origin_parsed = urlparse(origin)
             origin_domain = origin_parsed.netloc
-            
-            # Check if it's a valid domain (not localhost/127.0.0.1)
+            # Allow only if the origin matches the Host header (strict same-origin)
+            host = self.headers.get('Host')
+            if host and origin_domain == host:
+                return True
+            # Allow local development
             if self._is_local_development(origin):
                 return True
-                
-            # For production domains, check if it's a valid domain
-            # Allow any domain that's not obviously malicious
-            if origin_domain and '.' in origin_domain and not origin_domain.startswith('.'):
-                # Additional security: check for common malicious patterns
-                malicious_patterns = [
-                    r'\.(tk|ml|ga|cf|gq)$',  # Free domains often used for attacks
-                    r'^(0\.0\.0\.0|255\.255\.255\.255)',  # Invalid IPs
-                    r'^(localhost|127\.0\.0\.1|0\.0\.0\.0)',  # Local addresses
-                ]
-                
-                for pattern in malicious_patterns:
-                    if re.search(pattern, origin_domain):
-                        return False
-                        
+            # Allowlist for production (add more as needed)
+            if origin_domain in self.ALLOWED_PROD_ORIGINS:
                 return True
-                
         except Exception as e:
             print(f"[{time.strftime('%H:%M:%S')}] Error parsing origin {origin}: {e}")
             return False
-            
         return False
-    
+
     def _check_rate_limit(self, client_ip):
         """Check if the client has exceeded rate limits"""
         current_time = time.time()
@@ -188,47 +177,18 @@ class CORSProxy(BaseHTTPRequestHandler):
         return True, None
     
     def _check_origin_security(self):
-        """Check if the request is from an allowed origin"""
+        """Check if the request is from an allowed origin (strict)"""
         origin = self.headers.get('Origin')
         referer = self.headers.get('Referer')
-        
-        # Log security check for debugging
         print(f"[{time.strftime('%H:%M:%S')}] Security check - Origin: {origin}, Referer: {referer}")
-        
         # Allow local development environments
         if self._is_local_development(origin):
             print(f"[{time.strftime('%H:%M:%S')}] Allowing local development origin: {origin}")
             return True
-        
-        # Check if it's a same-domain request (production deployment)
+        # Strict same-origin check (Origin must match Host or allowlist)
         if self._is_same_domain_request(origin, referer):
-            print(f"[{time.strftime('%H:%M:%S')}] Allowing same-domain request from: {origin}")
+            print(f"[{time.strftime('%H:%M:%S')}] Allowing strict same-domain request from: {origin}")
             return True
-        
-        # Check Referer header as fallback for same-domain requests
-        if referer:
-            try:
-                referer_parsed = urlparse(referer)
-                referer_domain = referer_parsed.netloc
-                
-                if self._is_local_development(referer):
-                    print(f"[{time.strftime('%H:%M:%S')}] Allowing local development referer: {referer}")
-                    return True
-                    
-                if referer_domain and '.' in referer_domain and not referer_domain.startswith('.'):
-                    print(f"[{time.strftime('%H:%M:%S')}] Allowing same-domain referer: {referer}")
-                    return True
-                    
-            except Exception as e:
-                print(f"[{time.strftime('%H:%M:%S')}] Error parsing referer {referer}: {e}")
-        
-        # If no Origin or Referer, check if it's a direct request (for testing)
-        # This allows curl and direct browser requests for testing
-        user_agent = self.headers.get('User-Agent', '')
-        if not origin and not referer:
-            print(f"[{time.strftime('%H:%M:%S')}] No Origin/Referer, allowing direct request with UA: {user_agent[:50]}")
-            return True
-        
         print(f"[{time.strftime('%H:%M:%S')}] BLOCKED: Origin {origin} not allowed")
         return False
     
@@ -293,20 +253,34 @@ class CORSProxy(BaseHTTPRequestHandler):
                 return params['url'][0]
         return self.path[1:] if self.path.startswith('/') else self.path
 
+    def _is_method_allowed(self):
+        """Check if the HTTP method is allowed"""
+        return self.command in self.ALLOWED_METHODS
+
+    def _is_response_content_type_blocked(self, content_type):
+        """Check if the response content type is blocked"""
+        if not content_type:
+            return False
+        content_type = content_type.lower()
+        for blocked_type in self.BLOCKED_CONTENT_TYPES:
+            if content_type.startswith(blocked_type):
+                return True
+        return False
+
     def do_GET(self):
+        # Block disallowed HTTP methods
+        if not self._is_method_allowed():
+            self._send_security_error(f"HTTP method '{self.command}' not allowed", 405)
+            return
         # Perform security checks
         security_ok, security_error = self._perform_security_checks()
         if not security_ok:
             self._send_security_error(security_error)
             return
-            
-        # Parse the URL parameter from the query string
         url = self._extract_target_url()
-        
         start_time = time.time()
         print(f"[{time.strftime('%H:%M:%S')}] GET {url}")
         try:
-            # Forward relevant headers
             headers = {}
             for h in ['Authorization', 'Accept', 'Content-Type', 'User-Agent', 'If-Match', 'If-None-Match']:
                 if h in self.headers:
@@ -315,14 +289,15 @@ class CORSProxy(BaseHTTPRequestHandler):
             resp = requests.get(url, headers=headers, allow_redirects=True, timeout=25)
             elapsed = time.time() - start_time
             print(f"[{time.strftime('%H:%M:%S')}] Response {resp.status_code} in {elapsed:.2f}s")
-            
-            # Check response size
             if len(resp.content) > self.MAX_RESPONSE_SIZE:
                 self._send_security_error(f"Response size {len(resp.content)} exceeds maximum {self.MAX_RESPONSE_SIZE}", 413)
                 return
-            
+            # Block disallowed response content-types
+            resp_content_type = resp.headers.get('Content-Type', '')
+            if self._is_response_content_type_blocked(resp_content_type):
+                self._send_security_error(f"Response content type '{resp_content_type}' is not allowed", 415)
+                return
             self.send_response(resp.status_code)
-            # Return the specific origin that made the request
             origin = self.headers.get('Origin')
             if origin:
                 self.send_header('Access-Control-Allow-Origin', origin)
@@ -336,10 +311,7 @@ class CORSProxy(BaseHTTPRequestHandler):
         except Exception as e:
             elapsed = time.time() - start_time
             print(f"[{time.strftime('%H:%M:%S')}] Error after {elapsed:.2f}s: {e}")
-            self.send_response(502)
-            self.send_header('Access-Control-Allow-Origin', '*')
-            self.end_headers()
-            self.wfile.write(str(e).encode())
+            self._send_security_error(str(e), 502)
 
     def do_OPTIONS(self):
         # Perform security checks
@@ -359,24 +331,41 @@ class CORSProxy(BaseHTTPRequestHandler):
         self.end_headers()
 
     def do_POST(self):
+        length = int(self.headers.get('Content-Length', 0))
+        if length > self.MAX_REQUEST_SIZE:
+            self._send_security_error(f"Request size {length} exceeds maximum {self.MAX_REQUEST_SIZE}", 413)
+            return
         self._proxy_request('POST')
     def do_PUT(self):
+        length = int(self.headers.get('Content-Length', 0))
+        if length > self.MAX_REQUEST_SIZE:
+            self._send_security_error(f"Request size {length} exceeds maximum {self.MAX_REQUEST_SIZE}", 413)
+            return
         self._proxy_request('PUT')
     def do_PATCH(self):
+        length = int(self.headers.get('Content-Length', 0))
+        if length > self.MAX_REQUEST_SIZE:
+            self._send_security_error(f"Request size {length} exceeds maximum {self.MAX_REQUEST_SIZE}", 413)
+            return
         self._proxy_request('PATCH')
     def do_DELETE(self):
+        length = int(self.headers.get('Content-Length', 0))
+        if length > self.MAX_REQUEST_SIZE:
+            self._send_security_error(f"Request size {length} exceeds maximum {self.MAX_REQUEST_SIZE}", 413)
+            return
         self._proxy_request('DELETE')
 
     def _proxy_request(self, method):
+        # Block disallowed HTTP methods
+        if not self._is_method_allowed():
+            self._send_security_error(f"HTTP method '{self.command}' not allowed", 405)
+            return
         # Perform security checks
         security_ok, security_error = self._perform_security_checks()
         if not security_ok:
             self._send_security_error(security_error)
             return
-            
-        # Parse the URL parameter from the query string
         url = self._extract_target_url()
-        
         start_time = time.time()
         print(f"[{time.strftime('%H:%M:%S')}] {method} {url}")
         try:
@@ -390,14 +379,15 @@ class CORSProxy(BaseHTTPRequestHandler):
             resp = requests.request(method, url, headers=headers, data=data, allow_redirects=True, timeout=25)
             elapsed = time.time() - start_time
             print(f"[{time.strftime('%H:%M:%S')}] Response {resp.status_code} in {elapsed:.2f}s")
-            
-            # Check response size
             if len(resp.content) > self.MAX_RESPONSE_SIZE:
                 self._send_security_error(f"Response size {len(resp.content)} exceeds maximum {self.MAX_RESPONSE_SIZE}", 413)
                 return
-            
+            # Block disallowed response content-types
+            resp_content_type = resp.headers.get('Content-Type', '')
+            if self._is_response_content_type_blocked(resp_content_type):
+                self._send_security_error(f"Response content type '{resp_content_type}' is not allowed", 415)
+                return
             self.send_response(resp.status_code)
-            # Return the specific origin that made the request
             origin = self.headers.get('Origin')
             if origin:
                 self.send_header('Access-Control-Allow-Origin', origin)
@@ -411,10 +401,7 @@ class CORSProxy(BaseHTTPRequestHandler):
         except Exception as e:
             elapsed = time.time() - start_time
             print(f"[{time.strftime('%H:%M:%S')}] Error after {elapsed:.2f}s: {e}")
-            self.send_response(502)
-            self.send_header('Access-Control-Allow-Origin', '*')
-            self.end_headers()
-            self.wfile.write(str(e).encode())
+            self._send_security_error(str(e), 502)
 
 if __name__ == '__main__':
     import sys

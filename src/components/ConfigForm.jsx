@@ -112,15 +112,16 @@ const ConfigForm = ({ config, onConfigUpdate, onSave, onClearCache, error }) => 
   };
 
   const handleClearCache = async () => {
-    if (window.confirm('Are you sure you want to clear all cached data? This will reset your configuration and clear any stored data.')) {
-      setIsClearing(true);
-      try {
-        if (onClearCache) {
-          await onClearCache();
-        }
-      } finally {
-        setIsClearing(false);
+    // Show confirmation dialog first
+    const confirmed = window.confirm('Are you sure you want to clear all cached data? This will reset your configuration and clear any stored data.');
+    if (!confirmed) return;
+    setIsClearing(true);
+    try {
+      if (onClearCache) {
+        await onClearCache();
       }
+    } finally {
+      setIsClearing(false);
     }
   };
 
