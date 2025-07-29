@@ -201,7 +201,7 @@ For local development, you may need to start the CORS proxy:
 python3 simple-cors-proxy.py
 ```
 
-The CORS proxy will run on `http://localhost:8080` and can be enabled in the client configuration.
+The CORS proxy will run on `http://localhost:8001/proxy/` and can be enabled in the client configuration.
 
 ---
 

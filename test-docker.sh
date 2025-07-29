@@ -55,7 +55,7 @@ fi
 
 # Test the CORS proxy
 echo "🔗 Testing CORS proxy..."
-if curl -f http://localhost:8001/proxy/ > /dev/null 2>&1; then
+if curl -f "http://localhost:8001/proxy/https://httpbin.org/get" > /dev/null 2>&1; then
     echo "✅ CORS proxy is accessible"
 else
     echo "❌ CORS proxy is not accessible"

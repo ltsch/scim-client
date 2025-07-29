@@ -30,7 +30,7 @@ export function renderUserList(container, users, onSelectUser, options = {}) {
     container.innerHTML = '<div>No users found.</div>';
     return;
   }
-  let html = `<table class="user-list-table">
+  let html = `<table class="data-table user-list-table">
     <thead><tr><th></th>${columns.map(col => `<th>${col}</th>`).join('')}</tr></thead>
     <tbody>`;
   users.forEach((user, idx) => {
@@ -38,7 +38,7 @@ export function renderUserList(container, users, onSelectUser, options = {}) {
       <td><button class="expand-btn" data-idx="${idx}">+</button></td>
       ${columns.map(col => `<td>${Array.isArray(user[col]) ? user[col].join(', ') : (user[col] ?? '')}</td>`).join('')}
     </tr>`;
-    html += `<tr class="details-row" id="details-${idx}" style="display:none;"><td colspan="${columns.length + 1}"></td></tr>`;
+    html += `<tr class="details-row hidden" id="details-${idx}"><td colspan="${columns.length + 1}"></td></tr>`;
   });
   html += '</tbody></table>';
   container.innerHTML = html;
@@ -48,13 +48,13 @@ export function renderUserList(container, users, onSelectUser, options = {}) {
       e.stopPropagation();
       const idx = btn.getAttribute('data-idx');
       const detailsRow = container.querySelector(`#details-${idx}`);
-      if (detailsRow.style.display === 'none') {
-        detailsRow.style.display = '';
+      if (detailsRow.classList.contains('hidden')) {
+        detailsRow.classList.remove('hidden');
         btn.textContent = '-';
         const user = users[idx];
         renderJSON(detailsRow.cells[0], user);
       } else {
-        detailsRow.style.display = 'none';
+        detailsRow.classList.add('hidden');
         btn.textContent = '+';
         detailsRow.cells[0].innerHTML = '';
       }

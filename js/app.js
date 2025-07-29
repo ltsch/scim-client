@@ -22,13 +22,16 @@ const CONFIG_KEYS = {
   USE_CORS_PROXY: 'use_cors_proxy'
 };
 
-// For local development, always prepend the local CORS proxy to the SCIM endpoint
-export const LOCAL_CORS_PROXY = 'http://localhost:8080/';
+// The CORS proxy is always available via the /proxy/ route
+// This works for both local and remote access since Nginx handles the routing
+export const LOCAL_CORS_PROXY = '/proxy/';
+
 export function withCorsProxy(endpoint, useProxy) {
   if (!useProxy) return endpoint;
-  if (endpoint.startsWith(LOCAL_CORS_PROXY)) return endpoint;
-  // Only prepend if not already present
-  return LOCAL_CORS_PROXY + endpoint.replace(/^https?:\/\//, 'https://');
+  
+  if (endpoint.startsWith('/proxy/')) return endpoint;
+  // Use the nginx proxy path which will forward to the Python CORS proxy
+  return '/proxy/' + endpoint.replace(/^https?:\/\//, 'https://');
 }
 
 // Try to load from .env (for local dev with Vite/Parcel/etc.), fallback to localStorage
@@ -101,32 +104,39 @@ async function validateSCIMConfig(endpoint, apiKey, useProxy) {
 
 function renderConfigForm(container, { endpoint, apiKey, useProxy = false, error = '' }) {
   if (!container) container = document.getElementById('app');
+  
+  // Handle null/undefined values to show blank instead of "null" text
+  const endpointValue = endpoint || '';
+  const apiKeyValue = apiKey || '';
+  
   container.innerHTML = `
     <div class="container">
       <h1>SCIM Client Test Harness</h1>
-      <form id="scim-config-form">
-        <div style="margin-bottom: 1em;">
-          <label>
-            SCIM Endpoint URL<br>
-            <input type="url" id="scim-endpoint" value="${endpoint}" required placeholder="https://scim.example.com/v2" style="width: 350px;">
+      <form id="scim-config-form" class="resource-form">
+        <div class="form-group">
+          <label class="form-label">
+            SCIM Endpoint URL
+          </label>
+          <input type="url" id="scim-endpoint" value="${endpointValue}" required placeholder="https://scim.example.com/v2" class="form-control form-control-wide">
+        </div>
+        <div class="form-group">
+          <label class="form-label">
+            API Key
+          </label>
+          <input type="text" id="scim-api-key" value="${apiKeyValue}" required placeholder="API Key" class="form-control form-control-wide">
+        </div>
+        <div class="form-group">
+          <label class="form-label">
+            <input type="checkbox" id="use-cors-proxy" ${useProxy ? 'checked' : ''} class="form-control">
+            Use CORS proxy (/proxy/)
           </label>
         </div>
-        <div style="margin-bottom: 1em;">
-          <label>
-            API Key<br>
-            <input type="text" id="scim-api-key" value="${apiKey}" required placeholder="API Key" style="width: 350px;">
-          </label>
+        <div class="form-actions">
+          <button type="submit" class="btn btn-primary">Validate & Save</button>
+          <button type="button" id="clear-all-data-btn" class="btn btn-secondary">Clear All Locally Cached Data</button>
         </div>
-        <div style="margin-bottom: 1em;">
-          <label>
-            <input type="checkbox" id="use-cors-proxy" ${useProxy ? 'checked' : ''}>
-            Use CORS proxy (http://localhost:8080/)
-          </label>
-        </div>
-        <button type="submit">Validate & Save</button>
-        ${error ? `<div style="color: #b00; margin-top: 1em; white-space: pre-wrap;">${error}</div>` : ''}
-      </form>
-      <div style="margin-top: 2em;"><button id="clear-all-data-btn">Clear All Locally Cached Data</button></div>
+                      ${error ? `<div class="alert alert-danger error-display">${error}</div>` : ''}
+            </form>
     </div>
   `;
   container.querySelector('#scim-config-form').onsubmit = async (e) => {
@@ -222,9 +232,12 @@ async function fetchScimMetadata(client) {
     scimMetadata.error = null;
     usedCache = true;
     
-    // Start background refresh
+    // Start background refresh with minimum delay
     (async () => {
       console.log('fetchScimMetadata: Starting background refresh');
+      // Add a minimum delay to allow time for server to be ready
+      await new Promise(resolve => setTimeout(resolve, 1500));
+      
       try {
         const svc = await client.getServiceProviderConfig();
         const rtypes = await client._fetch('/ResourceTypes');
@@ -262,78 +275,110 @@ async function fetchScimMetadata(client) {
     return;
   }
   
-  // 2. If no cache, fetch fresh
+  // 2. If no cache, fetch fresh with retry logic and minimum delay
   console.log('fetchScimMetadata: No cache available, fetching fresh metadata');
   let freshOk = false;
-  try {
-    const svc = await client.getServiceProviderConfig();
-    const rtypes = await client._fetch('/ResourceTypes');
-    const schemas = await client._fetch('/Schemas');
-    
-    console.log('fetchScimMetadata: Fresh fetch results', {
-      svc: svc.ok ? 'OK' : `FAILED (${svc.status})`,
-      rtypes: rtypes.ok ? 'OK' : `FAILED (${rtypes.status})`,
-      schemas: schemas.ok ? 'OK' : `FAILED (${schemas.status})`
-    });
-    
-    if (svc.ok && rtypes.ok && schemas.ok) {
-      scimMetadata.serviceProviderConfig = svc.data;
-      scimMetadata.resourceTypes = rtypes.data.Resources;
-      scimMetadata.schemas = schemas.data.Resources;
-      saveMetadataToCache({
-        serviceProviderConfig: scimMetadata.serviceProviderConfig,
-        resourceTypes: scimMetadata.resourceTypes,
-        schemas: scimMetadata.schemas
-      });
-      scimMetadata.loading = false;
-      scimMetadata.error = null;
-      freshOk = true;
-      console.log('fetchScimMetadata: Fresh fetch successful');
-      return;
-    } else {
-      // Log specific failures and show immediate error
-      const failures = [];
-      if (!svc.ok) failures.push(`ServiceProviderConfig: ${svc.status} ${svc.statusText}`);
-      if (!rtypes.ok) failures.push(`ResourceTypes: ${rtypes.status} ${rtypes.statusText}`);
-      if (!schemas.ok) failures.push(`Schemas: ${schemas.status} ${schemas.statusText}`);
-      
-      console.error('fetchScimMetadata: Fresh fetch failed', failures);
-      
-      // Show immediate error instead of waiting
-      scimMetadata.loading = false;
-      scimMetadata.error = {
-        error: 'Failed to fetch SCIM metadata',
-        type: 'METADATA_FETCH_ERROR',
-        message: `Failed to fetch SCIM metadata: ${failures.join(', ')}`,
-        suggestion: 'Check the SCIM endpoint configuration and server connectivity',
-        details: {
-          failures,
-          svc: svc.ok ? null : svc.data,
-          rtypes: rtypes.ok ? null : rtypes.data,
-          schemas: schemas.ok ? null : schemas.data
-        }
-      };
-      return;
-    }
-  } catch (e) {
-    console.error('fetchScimMetadata: Exception during fresh fetch', e);
-    
-    // Show immediate error instead of waiting
-    scimMetadata.loading = false;
-    scimMetadata.error = {
-      error: 'Exception during SCIM metadata fetch',
-      type: 'METADATA_FETCH_EXCEPTION',
-      message: e.message,
-      suggestion: 'Check network connectivity and SCIM server availability',
-      details: {
-        originalError: {
-          name: e.name,
-          message: e.message,
-          stack: e.stack
-        }
+  let retryCount = 0;
+  const maxRetries = 3; // Increased retries
+  const minDelay = 2000; // Minimum 2 second delay for first attempt
+  
+  // Add initial delay to allow server time to be ready
+  console.log('fetchScimMetadata: Adding initial delay to allow server time to be ready');
+  await new Promise(resolve => setTimeout(resolve, minDelay));
+  
+  while (!freshOk && retryCount <= maxRetries) {
+    try {
+      if (retryCount > 0) {
+        console.log(`fetchScimMetadata: Retry attempt ${retryCount}/${maxRetries}`);
+        // Progressive delay: 1s, 2s, 3s
+        const retryDelay = 1000 * retryCount;
+        console.log(`fetchScimMetadata: Waiting ${retryDelay}ms before retry`);
+        await new Promise(resolve => setTimeout(resolve, retryDelay));
       }
-    };
-    return;
+      
+      console.log(`fetchScimMetadata: Attempt ${retryCount + 1} - fetching metadata`);
+      const svc = await client.getServiceProviderConfig();
+      const rtypes = await client._fetch('/ResourceTypes');
+      const schemas = await client._fetch('/Schemas');
+      
+      console.log('fetchScimMetadata: Fresh fetch results', {
+        attempt: retryCount + 1,
+        svc: svc.ok ? 'OK' : `FAILED (${svc.status})`,
+        rtypes: rtypes.ok ? 'OK' : `FAILED (${rtypes.status})`,
+        schemas: schemas.ok ? 'OK' : `FAILED (${schemas.status})`
+      });
+      
+      if (svc.ok && rtypes.ok && schemas.ok) {
+        scimMetadata.serviceProviderConfig = svc.data;
+        scimMetadata.resourceTypes = rtypes.data.Resources;
+        scimMetadata.schemas = schemas.data.Resources;
+        saveMetadataToCache({
+          serviceProviderConfig: scimMetadata.serviceProviderConfig,
+          resourceTypes: scimMetadata.resourceTypes,
+          schemas: scimMetadata.schemas
+        });
+        scimMetadata.loading = false;
+        scimMetadata.error = null;
+        freshOk = true;
+        console.log('fetchScimMetadata: Fresh fetch successful');
+        return;
+      } else {
+        // Log specific failures
+        const failures = [];
+        if (!svc.ok) failures.push(`ServiceProviderConfig: ${svc.status} ${svc.statusText}`);
+        if (!rtypes.ok) failures.push(`ResourceTypes: ${rtypes.status} ${rtypes.statusText}`);
+        if (!schemas.ok) failures.push(`Schemas: ${schemas.status} ${schemas.statusText}`);
+        
+        console.error('fetchScimMetadata: Fresh fetch failed', failures);
+        
+        // If this is the last retry, show error
+        if (retryCount === maxRetries) {
+          scimMetadata.loading = false;
+          scimMetadata.error = {
+            error: 'Failed to fetch SCIM metadata',
+            type: 'METADATA_FETCH_ERROR',
+            message: `Failed to fetch SCIM metadata after ${maxRetries + 1} attempts: ${failures.join(', ')}`,
+            suggestion: 'The SCIM server might need more time to be ready after configuration changes. Try refreshing the page or check the server configuration.',
+            details: {
+              failures,
+              attempts: retryCount + 1,
+              totalDelay: minDelay + (retryCount * 1000 * retryCount),
+              svc: svc.ok ? null : svc.data,
+              rtypes: rtypes.ok ? null : rtypes.data,
+              schemas: schemas.ok ? null : schemas.data
+            }
+          };
+          return;
+        }
+        
+        retryCount++;
+      }
+    } catch (e) {
+      console.error('fetchScimMetadata: Exception during fresh fetch', e);
+      
+      // If this is the last retry, show error
+      if (retryCount === maxRetries) {
+        scimMetadata.loading = false;
+        scimMetadata.error = {
+          error: 'Exception during SCIM metadata fetch',
+          type: 'METADATA_FETCH_EXCEPTION',
+          message: e.message,
+          suggestion: 'Check network connectivity and SCIM server availability. The server might need more time to be ready after configuration changes.',
+          details: {
+            originalError: {
+              name: e.name,
+              message: e.message,
+              stack: e.stack
+            },
+            attempts: retryCount + 1,
+            totalDelay: minDelay + (retryCount * 1000 * retryCount)
+          }
+        };
+        return;
+      }
+      
+      retryCount++;
+    }
   }
   
   // 3. If we get here, something went wrong
@@ -409,11 +454,69 @@ function renderApp() {
   }
   const client = new SCIMClient();
   if (scimMetadata.loading) {
-    document.getElementById('app').innerHTML = '<div class="container"><h1>SCIM Client Test Harness</h1><div>Loading SCIM metadata...</div></div>';
+    document.getElementById('app').innerHTML = `
+      <div class="container">
+        <h1>SCIM Client Test Harness</h1>
+        <div class="loading-spinner metadata-loading">
+          <div class="spinner"></div>
+          <div class="loading-title">
+            Loading SCIM metadata...
+          </div>
+          <div class="loading-description">
+            This may take a few moments while the server prepares the metadata
+          </div>
+          <div class="loading-note">
+            If this takes too long, the server might need more time to be ready
+          </div>
+        </div>
+      </div>
+    `;
     return;
   }
   if (scimMetadata.error) {
-    document.getElementById('app').innerHTML = `<div class="container"><h1>SCIM Client Test Harness</h1><div style="color:#b00;">Failed to load SCIM metadata: ${scimMetadata.error}</div></div>`;
+    // Handle error object properly
+    let errorMessage = 'Failed to load SCIM metadata';
+    let errorDetails = '';
+    let errorSuggestion = '';
+    
+    if (typeof scimMetadata.error === 'string') {
+      errorMessage = scimMetadata.error;
+    } else if (scimMetadata.error && typeof scimMetadata.error === 'object') {
+      errorMessage = scimMetadata.error.message || scimMetadata.error.error || 'Failed to load SCIM metadata';
+      errorSuggestion = scimMetadata.error.suggestion || '';
+      
+      // Add additional details if available
+      if (scimMetadata.error.details) {
+        const details = scimMetadata.error.details;
+        if (details.attempts) {
+          errorDetails += `Attempts: ${details.attempts}\n`;
+        }
+        if (details.totalDelay) {
+          errorDetails += `Total delay: ${details.totalDelay}ms\n`;
+        }
+        if (details.failures && details.failures.length > 0) {
+          errorDetails += `Failures:\n${details.failures.map(f => `  - ${f}`).join('\n')}\n`;
+        }
+      }
+    }
+    
+    document.getElementById('app').innerHTML = `
+      <div class="container">
+        <h1>SCIM Client Test Harness</h1>
+        <div class="error-message">
+          <h3>Metadata Loading Error</h3>
+          <div class="error-details">${errorMessage}</div>
+          ${errorSuggestion ? `<div class="error-suggestion"><strong>💡 Suggestion:</strong> ${errorSuggestion}</div>` : ''}
+          ${errorDetails ? `<details class="error-details-expanded"><summary>📋 Show Technical Details</summary><pre>${errorDetails}</pre></details>` : ''}
+          <div class="error-actions">
+            <button onclick="retryMetadataLoading()" class="btn btn-primary">🔄 Retry Now</button>
+            <button onclick="clearAllScimData()" class="btn btn-danger">🗑️ Clear Data & Retry</button>
+            <button onclick="window.location.href='?section=settings'" class="btn btn-secondary">⚙️ Check Settings</button>
+          </div>
+        </div>
+        </div>
+      </div>
+    `;
     return;
   }
   const resourceTypes = getSupportedResourceTypes();
@@ -446,14 +549,56 @@ window.onpopstate = function (event) {
   renderApp();
 };
 
-// On initial load, fetch metadata then render
-(async function initApp() {
+// Enhanced metadata loading with better user experience
+async function loadMetadataWithRetry() {
+  // Only proceed if configuration is validated
+  if (!getValidated()) {
+    console.log('loadMetadataWithRetry: Configuration not validated, skipping metadata load');
+    return;
+  }
+  
   const client = new SCIMClient();
-  await fetchScimMetadata(client);
+  
+  // Show initial loading state
+  scimMetadata.loading = true;
+  scimMetadata.error = null;
+  renderApp();
+  
+  try {
+    await fetchScimMetadata(client);
+  } catch (error) {
+    console.error('loadMetadataWithRetry: Unexpected error', error);
+    scimMetadata.loading = false;
+    scimMetadata.error = {
+      error: 'Unexpected error during metadata loading',
+      type: 'UNEXPECTED_ERROR',
+      message: error.message || 'An unexpected error occurred',
+      suggestion: 'Please try refreshing the page or check your browser console for more details.',
+      details: {
+        originalError: {
+          name: error.name,
+          message: error.message,
+          stack: error.stack
+        }
+      }
+    };
+  }
+  
   // After metadata is loaded, re-parse the section from the URL
   const section = getSectionFromQuery();
   currentSection = section;
   renderApp();
+}
+
+// On initial load, check configuration and load metadata if validated
+(async function initApp() {
+  // Check if configuration is validated before trying to load metadata
+  if (getValidated()) {
+    await loadMetadataWithRetry();
+  } else {
+    // If not validated, just render the app (which will show the config form)
+    renderApp();
+  }
   
   // Add global event listener for navigation
   document.addEventListener('navigate', (event) => {
@@ -530,6 +675,12 @@ function clearAllScimData() {
   location.reload();
 }
 
+// Global function to retry metadata loading
+window.retryMetadataLoading = async function() {
+  console.log('retryMetadataLoading: Starting manual retry');
+  await loadMetadataWithRetry();
+};
+
 function renderSettingsSection(mainPanel) {
   mainPanel.innerHTML = '';
   const header = document.createElement('h1');
@@ -537,11 +688,11 @@ function renderSettingsSection(mainPanel) {
   mainPanel.appendChild(header);
   const desc = document.createElement('div');
   desc.textContent = 'Update the SCIM endpoint, API key, and CORS proxy setting.';
-  desc.style.marginBottom = '1em';
+  desc.className = 'info-description';
   mainPanel.appendChild(desc);
   renderConfigForm(mainPanel, {
-    endpoint: localStorage.getItem(CONFIG_KEYS.SCIM_ENDPOINT),
-    apiKey: localStorage.getItem(CONFIG_KEYS.API_KEY),
+    endpoint: localStorage.getItem(CONFIG_KEYS.SCIM_ENDPOINT) || '',
+    apiKey: localStorage.getItem(CONFIG_KEYS.API_KEY) || '',
     useProxy: localStorage.getItem(CONFIG_KEYS.USE_CORS_PROXY) === 'true'
   });
   // Remove duplicate Clear All Data button here
@@ -615,7 +766,7 @@ async function renderResourceSection(mainPanel, client, resource) {
     mainPanel.appendChild(header);
     const desc = document.createElement('div');
     desc.textContent = `View, create, edit, and delete ${resource.name.toLowerCase()}. All actions show raw SCIM requests and responses.`;
-    desc.style.marginBottom = '1em';
+    desc.className = 'info-description';
     mainPanel.appendChild(desc);
     
     // Summary table container
@@ -626,38 +777,32 @@ async function renderResourceSection(mainPanel, client, resource) {
     let lastReqRes = null;
     const accordion = document.createElement('div');
     accordion.className = 'reqres-accordion';
-    accordion.style.marginTop = '2em';
     const toggleBtn = document.createElement('button');
     toggleBtn.textContent = 'Show Raw Request/Response';
     toggleBtn.className = 'reqres-toggle-btn';
-    toggleBtn.style.marginBottom = '0.5em';
     const panel = document.createElement('div');
-    panel.style.display = 'none';
-    panel.style.background = '#fafafa';
-    panel.style.border = '1px solid #ddd';
-    panel.style.padding = '1em';
-    panel.style.overflowX = 'auto';
+    panel.className = 'reqres-panel hidden';
     accordion.appendChild(toggleBtn);
     accordion.appendChild(panel);
     mainPanel.appendChild(accordion);
     
     toggleBtn.onclick = () => {
-      if (panel.style.display === 'none') {
-        panel.style.display = 'block';
+      if (panel.classList.contains('hidden')) {
+        panel.classList.remove('hidden');
         toggleBtn.textContent = 'Hide Raw Request/Response';
         if (lastReqRes) {
                   panel.innerHTML = '';
         window.renderJSON(panel, lastReqRes);
         }
       } else {
-        panel.style.display = 'none';
+        panel.classList.add('hidden');
         toggleBtn.textContent = 'Show Raw Request/Response';
       }
     };
     
     function updateReqResPanel(data) {
       lastReqRes = data;
-      if (panel.style.display === 'block') {
+      if (!panel.classList.contains('hidden')) {
         panel.innerHTML = '';
         window.renderJSON(panel, lastReqRes);
       }
@@ -686,7 +831,7 @@ async function renderResourceSection(mainPanel, client, resource) {
       
       const createBtn = document.createElement('button');
       createBtn.textContent = `Create ${resource.name}`;
-      createBtn.style.margin = '1em 0';
+      createBtn.className = 'btn btn-primary';
       mainPanel.appendChild(createBtn);
       const formDiv = document.createElement('div');
       mainPanel.appendChild(formDiv);
@@ -835,10 +980,10 @@ async function renderUsersSection(mainPanel, client, resource) {
   mainPanel.appendChild(header);
   const desc = document.createElement('div');
   desc.textContent = 'View, create, edit, and delete users. All actions show raw SCIM requests and responses.';
-  desc.style.marginBottom = '1em';
+  desc.className = 'info-description';
   mainPanel.appendChild(desc);
   const reqResPanel = document.createElement('div');
-  reqResPanel.style.marginBottom = '1em';
+  reqResPanel.className = 'reqres-panel-container';
   mainPanel.appendChild(reqResPanel);
   showLoading(mainPanel, 'Loading users...');
   const users = await client.getUsers({ count: 10 });
@@ -858,7 +1003,7 @@ async function renderUsersSection(mainPanel, client, resource) {
   if (users.ok && users.data && Array.isArray(users.data.Resources)) {
     const createBtn = document.createElement('button');
     createBtn.textContent = 'Create User';
-    createBtn.style.margin = '1em 0';
+    createBtn.className = 'btn btn-primary';
     mainPanel.appendChild(createBtn);
     const userFormDiv = document.createElement('div');
     mainPanel.appendChild(userFormDiv);
@@ -876,7 +1021,7 @@ async function renderUsersSection(mainPanel, client, resource) {
           response: result
         });
         if (result.ok) {
-          userFormDiv.innerHTML = '<div style="color:green;">User created successfully.</div>';
+          userFormDiv.innerHTML = '<div class="success-message">User created successfully.</div>';
           await renderUsersSection(mainPanel, client, resource);
         } else {
           showError(userFormDiv, `Error (${result.status}): ${JSON.stringify(result.data)}`);
@@ -902,12 +1047,13 @@ function renderUserDetail(container, user, client, mainPanel, reqResPanel, schem
   container.innerHTML = '';
   // Button row at the top
   const btnRow = document.createElement('div');
-  btnRow.style.margin = '1em 0';
+  btnRow.className = 'btn-row';
   const editBtn = document.createElement('button');
   editBtn.textContent = 'Edit';
+  editBtn.className = 'btn btn-secondary';
   const deleteBtn = document.createElement('button');
   deleteBtn.textContent = 'Delete';
-  deleteBtn.style.marginLeft = '1em';
+  deleteBtn.className = 'btn btn-danger';
   btnRow.appendChild(editBtn);
   btnRow.appendChild(deleteBtn);
   container.appendChild(btnRow);
@@ -917,24 +1063,19 @@ function renderUserDetail(container, user, client, mainPanel, reqResPanel, schem
   const jsonToggle = document.createElement('button');
   jsonToggle.textContent = 'Show User JSON';
   jsonToggle.className = 'reqres-toggle-btn';
-  jsonToggle.style.margin = '0.5em 0';
   const jsonPanel = document.createElement('div');
-  jsonPanel.style.display = 'none';
-  jsonPanel.style.background = '#fafafa';
-  jsonPanel.style.border = '1px solid #ddd';
-  jsonPanel.style.padding = '1em';
-  jsonPanel.style.overflowX = 'auto';
+  jsonPanel.className = 'reqres-panel';
   jsonAccordion.appendChild(jsonToggle);
   jsonAccordion.appendChild(jsonPanel);
   container.appendChild(jsonAccordion);
   jsonToggle.onclick = () => {
-    if (jsonPanel.style.display === 'none') {
-      jsonPanel.style.display = 'block';
+    if (jsonPanel.classList.contains('hidden')) {
+      jsonPanel.classList.remove('hidden');
       jsonToggle.textContent = 'Hide User JSON';
       jsonPanel.innerHTML = '';
       window.renderJSON(jsonPanel, user);
     } else {
-      jsonPanel.style.display = 'none';
+      jsonPanel.classList.add('hidden');
       jsonToggle.textContent = 'Show User JSON';
     }
   };
@@ -948,7 +1089,7 @@ function renderUserDetail(container, user, client, mainPanel, reqResPanel, schem
         }
       }
       if (patchOps.length === 0) {
-        container.innerHTML = '<div style="color:green;">No changes to update.</div>';
+        container.innerHTML = '<div class="success-message">No changes to update.</div>';
         renderUserDetail(container, user, client, mainPanel, reqResPanel, schema);
         return { __req: null, __res: null };
       }
@@ -961,7 +1102,7 @@ function renderUserDetail(container, user, client, mainPanel, reqResPanel, schem
       const result = await client.updateUser(user.id, patchOps);
       window.renderJSON(reqResPanel, { request: req, response: result });
       if (result.ok) {
-        container.innerHTML = '<div style="color:green;">User updated successfully.</div>';
+        container.innerHTML = '<div class="success-message">User updated successfully.</div>';
         await renderUsersSection(mainPanel, client, { schema: schema.id });
       } else {
         showError(container, `Error (${result.status}): ${JSON.stringify(result.data)}`);
@@ -982,7 +1123,7 @@ function renderUserDetail(container, user, client, mainPanel, reqResPanel, schem
       response: result
     });
     if (result.ok) {
-      container.innerHTML = '<div style="color:green;">User deleted successfully.</div>';
+      container.innerHTML = '<div class="success-message">User deleted successfully.</div>';
       await renderUsersSection(mainPanel, client, { schema: schema.id });
     } else {
       showError(container, `Error (${result.status}): ${JSON.stringify(result.data)}`);
@@ -997,10 +1138,10 @@ async function renderGroupsSection(mainPanel, client, resource) {
   mainPanel.appendChild(header);
   const desc = document.createElement('div');
   desc.textContent = 'View, create, edit, and delete groups. All actions show raw SCIM requests and responses.';
-  desc.style.marginBottom = '1em';
+  desc.className = 'info-description';
   mainPanel.appendChild(desc);
   const reqResPanel = document.createElement('div');
-  reqResPanel.style.marginBottom = '1em';
+  reqResPanel.className = 'reqres-panel-container';
   mainPanel.appendChild(reqResPanel);
   showLoading(mainPanel, 'Loading groups...');
   const groups = await client.getGroups({ count: 10 });
@@ -1020,7 +1161,7 @@ async function renderGroupsSection(mainPanel, client, resource) {
   if (groups.ok && groups.data && Array.isArray(groups.data.Resources)) {
     const createBtn = document.createElement('button');
     createBtn.textContent = 'Create Group';
-    createBtn.style.margin = '1em 0';
+    createBtn.className = 'btn btn-primary';
     mainPanel.appendChild(createBtn);
     const groupFormDiv = document.createElement('div');
     mainPanel.appendChild(groupFormDiv);
@@ -1038,7 +1179,7 @@ async function renderGroupsSection(mainPanel, client, resource) {
           response: result
         });
         if (result.ok) {
-          groupFormDiv.innerHTML = '<div style="color:green;">Group created successfully.</div>';
+          groupFormDiv.innerHTML = '<div class="success-message">Group created successfully.</div>';
           await renderGroupsSection(mainPanel, client, resource);
         } else {
           showError(groupFormDiv, `Error (${result.status}): ${JSON.stringify(result.data)}`);
@@ -1064,12 +1205,13 @@ function renderGroupDetail(container, group, client, mainPanel, reqResPanel, sch
   container.innerHTML = '';
   renderJSON(container, group);
   const btnRow = document.createElement('div');
-  btnRow.style.margin = '1em 0';
+  btnRow.className = 'btn-row';
   const editBtn = document.createElement('button');
   editBtn.textContent = 'Edit';
+  editBtn.className = 'btn btn-secondary';
   const deleteBtn = document.createElement('button');
   deleteBtn.textContent = 'Delete';
-  deleteBtn.style.marginLeft = '1em';
+  deleteBtn.className = 'btn btn-danger';
   btnRow.appendChild(editBtn);
   btnRow.appendChild(deleteBtn);
   container.appendChild(btnRow);
@@ -1083,7 +1225,7 @@ function renderGroupDetail(container, group, client, mainPanel, reqResPanel, sch
         }
       }
       if (patchOps.length === 0) {
-        container.innerHTML = '<div style="color:green;">No changes to update.</div>';
+        container.innerHTML = '<div class="success-message">No changes to update.</div>';
         renderGroupDetail(container, group, client, mainPanel, reqResPanel, schema);
         return { __req: null, __res: null };
       }
@@ -1096,7 +1238,7 @@ function renderGroupDetail(container, group, client, mainPanel, reqResPanel, sch
       const result = await client.updateGroup(group.id, patchOps);
       window.renderJSON(reqResPanel, { request: req, response: result });
       if (result.ok) {
-        container.innerHTML = '<div style="color:green;">Group updated successfully.</div>';
+        container.innerHTML = '<div class="success-message">Group updated successfully.</div>';
         await renderGroupsSection(mainPanel, client, { schema: schema.id });
       } else {
         showError(container, `Error (${result.status}): ${JSON.stringify(result.data)}`);
@@ -1117,7 +1259,7 @@ function renderGroupDetail(container, group, client, mainPanel, reqResPanel, sch
       response: result
     });
     if (result.ok) {
-      container.innerHTML = '<div style="color:green;">Group deleted successfully.</div>';
+      container.innerHTML = '<div class="success-message">Group deleted successfully.</div>';
       await renderGroupsSection(mainPanel, client, { schema: schema.id });
     } else {
       showError(container, `Error (${result.status}): ${JSON.stringify(result.data)}`);
@@ -1129,29 +1271,19 @@ function renderGroupDetail(container, group, client, mainPanel, reqResPanel, sch
 function renderSummaryCard(container, data, title) {
   const card = document.createElement('div');
   card.className = 'summary-card';
-  card.style.background = '#f8f8f8';
-  card.style.border = '1px solid #e0e0e0';
-  card.style.borderRadius = '6px';
-  card.style.padding = '1em 1.5em';
-  card.style.marginBottom = '1.5em';
-  card.style.fontSize = '1.05em';
-  card.style.overflowX = 'auto';
   if (title) {
     const h = document.createElement('h3');
     h.textContent = title;
-    h.style.marginTop = '0';
+    h.className = 'summary-card-title';
     card.appendChild(h);
   }
   const table = document.createElement('table');
-  table.style.width = '100%';
-  table.style.borderCollapse = 'collapse';
+  table.className = 'summary-card-table';
   for (const key in data) {
     const row = document.createElement('tr');
     const k = document.createElement('td');
     k.textContent = key;
-    k.style.fontWeight = 'bold';
-    k.style.padding = '0.25em 0.5em 0.25em 0';
-    k.style.verticalAlign = 'top';
+    k.className = 'summary-card-key';
     const v = document.createElement('td');
     let value = data[key];
     if (Array.isArray(value)) {
@@ -1167,7 +1299,7 @@ function renderSummaryCard(container, data, title) {
     } else {
       v.textContent = String(value);
     }
-    v.style.padding = '0.25em 0.5em';
+    v.className = 'summary-card-value';
     row.appendChild(k);
     row.appendChild(v);
     table.appendChild(row);
@@ -1180,20 +1312,11 @@ function renderSummaryCard(container, data, title) {
 function renderSpecSummaryCard(container, data, section) {
   const card = document.createElement('div');
   card.className = 'summary-card';
-  card.style.background = '#f8f8f8';
-  card.style.border = '1px solid #e0e0e0';
-  card.style.borderRadius = '6px';
-  card.style.padding = '1em 1.5em';
-  card.style.marginBottom = '1.5em';
-  card.style.fontSize = '1.05em';
-  card.style.overflowX = 'auto';
   const h = document.createElement('h3');
   h.textContent = section + ' Summary';
-  h.style.marginTop = '0';
   card.appendChild(h);
   const table = document.createElement('table');
-  table.style.width = '100%';
-  table.style.borderCollapse = 'collapse';
+  table.className = 'summary-card-table';
   if (section === 'ServiceProviderConfig') {
     // Show spec-relevant fields
     const fields = [
@@ -1213,12 +1336,10 @@ function renderSpecSummaryCard(container, data, section) {
         const row = document.createElement('tr');
         const keyCell = document.createElement('td');
         keyCell.textContent = k;
-        keyCell.style.fontWeight = 'bold';
-        keyCell.style.padding = '0.25em 0.5em 0.25em 0';
-        keyCell.style.verticalAlign = 'top';
+        keyCell.className = 'summary-card-key';
         const valCell = document.createElement('td');
         valCell.textContent = String(v);
-        valCell.style.padding = '0.25em 0.5em';
+        valCell.className = 'summary-card-value';
         row.appendChild(keyCell);
         row.appendChild(valCell);
         table.appendChild(row);
@@ -1230,12 +1351,10 @@ function renderSpecSummaryCard(container, data, section) {
         const row = document.createElement('tr');
         const keyCell = document.createElement('td');
         keyCell.textContent = `authenticationSchemes[${idx}].type`;
-        keyCell.style.fontWeight = 'bold';
-        keyCell.style.padding = '0.25em 0.5em 0.25em 0';
-        keyCell.style.verticalAlign = 'top';
+        keyCell.className = 'summary-card-key';
         const valCell = document.createElement('td');
         valCell.textContent = `${scheme.type} (${scheme.name || ''})${scheme.description ? ': ' + scheme.description : ''}`;
-        valCell.style.padding = '0.25em 0.5em';
+        valCell.className = 'summary-card-value';
         row.appendChild(keyCell);
         row.appendChild(valCell);
         table.appendChild(row);
@@ -1247,12 +1366,10 @@ function renderSpecSummaryCard(container, data, section) {
         const row = document.createElement('tr');
         const keyCell = document.createElement('td');
         keyCell.textContent = `Resource[${idx}]`;
-        keyCell.style.fontWeight = 'bold';
-        keyCell.style.padding = '0.25em 0.5em 0.25em 0';
-        keyCell.style.verticalAlign = 'top';
+        keyCell.className = 'summary-card-key';
         const valCell = document.createElement('td');
         valCell.textContent = `${rt.name} (endpoint: ${rt.endpoint}, schema: ${rt.schema})`;
-        valCell.style.padding = '0.25em 0.5em';
+        valCell.className = 'summary-card-value';
         row.appendChild(keyCell);
         row.appendChild(valCell);
         table.appendChild(row);
@@ -1264,12 +1381,10 @@ function renderSpecSummaryCard(container, data, section) {
         const row = document.createElement('tr');
         const keyCell = document.createElement('td');
         keyCell.textContent = `Schema[${idx}]`;
-        keyCell.style.fontWeight = 'bold';
-        keyCell.style.padding = '0.25em 0.5em 0.25em 0';
-        keyCell.style.verticalAlign = 'top';
+        keyCell.className = 'summary-card-key';
         const valCell = document.createElement('td');
         valCell.textContent = `${sch.id}${sch.description ? ': ' + sch.description : ''}`;
-        valCell.style.padding = '0.25em 0.5em';
+        valCell.className = 'summary-card-value';
         row.appendChild(keyCell);
         row.appendChild(valCell);
         table.appendChild(row);
@@ -1287,36 +1402,30 @@ async function renderServerConfigSection(mainPanel, client) {
   mainPanel.appendChild(header);
   const desc = document.createElement('div');
   desc.textContent = 'Raw ServiceProviderConfig, ResourceTypes, and Schemas from the SCIM server. Each section shows the full HTTP request and response.';
-  desc.style.marginBottom = '1em';
+  desc.className = 'info-description';
   mainPanel.appendChild(desc);
 
   // Helper to create accordion for request/response (existing code)
   function createReqResAccordion(title, req, res) {
     const accordion = document.createElement('div');
     accordion.className = 'reqres-accordion';
-    accordion.style.marginBottom = '2em';
     const toggleBtn = document.createElement('button');
     toggleBtn.textContent = `Show Raw Request/Response for ${title}`;
     toggleBtn.className = 'reqres-toggle-btn';
-    toggleBtn.style.marginBottom = '0.5em';
     const panel = document.createElement('div');
-    panel.style.display = 'none';
-    panel.style.background = '#fafafa';
-    panel.style.border = '1px solid #ddd';
-    panel.style.padding = '1em';
-    panel.style.overflowX = 'auto';
+    panel.className = 'reqres-panel hidden';
     accordion.appendChild(toggleBtn);
     accordion.appendChild(panel);
     toggleBtn.onclick = () => {
-      if (panel.style.display === 'none') {
-        panel.style.display = 'block';
+      if (panel.classList.contains('hidden')) {
+        panel.classList.remove('hidden');
         toggleBtn.textContent = `Hide Raw Request/Response for ${title}`;
         panel.innerHTML = '';
         panel.innerHTML = `<pre class="json-viewer">${escapeHTML(typeof req === 'object' ? JSON.stringify(req, null, 2) : String(req))}
 
 ${escapeHTML(typeof res === 'object' ? JSON.stringify(res, null, 2) : String(res))}</pre>`;
       } else {
-        panel.style.display = 'none';
+        panel.classList.add('hidden');
         toggleBtn.textContent = `Show Raw Request/Response for ${title}`;
       }
     };
@@ -1370,7 +1479,7 @@ ${escapeHTML(typeof res === 'object' ? JSON.stringify(res, null, 2) : String(res
       // Full JSON viewer
       if (typeof svcBody === 'object' && svcBody !== null) {
         const jsonDiv = document.createElement('div');
-        jsonDiv.style.marginBottom = '1em';
+        jsonDiv.className = 'json-container';
         window.renderJSON(jsonDiv, svcBody);
         svcSection.appendChild(jsonDiv);
       }
@@ -1407,7 +1516,7 @@ ${escapeHTML(typeof res === 'object' ? JSON.stringify(res, null, 2) : String(res
       }
       if (typeof rtBody === 'object' && rtBody !== null) {
         const jsonDiv = document.createElement('div');
-        jsonDiv.style.marginBottom = '1em';
+        jsonDiv.className = 'json-container';
         window.renderJSON(jsonDiv, rtBody);
         rtSection.appendChild(jsonDiv);
       }
@@ -1444,7 +1553,7 @@ ${escapeHTML(typeof res === 'object' ? JSON.stringify(res, null, 2) : String(res
       }
       if (typeof schBody === 'object' && schBody !== null) {
         const jsonDiv = document.createElement('div');
-        jsonDiv.style.marginBottom = '1em';
+        jsonDiv.className = 'json-container';
         window.renderJSON(jsonDiv, schBody);
         schSection.appendChild(jsonDiv);
       }

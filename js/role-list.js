@@ -16,7 +16,7 @@ export async function renderRoleList(container, client, mainPanel, reqResPanel) 
       <div class="spinner"></div>
       <p>Loading roles...</p>
     </div>
-    <div class="content-area" id="role-content" style="display: none;">
+    <div class="content-area hidden" id="role-content">
       <div class="summary-stats" id="role-stats"></div>
       <div class="resource-list" id="role-list"></div>
     </div>
@@ -142,8 +142,8 @@ export async function renderRoleList(container, client, mainPanel, reqResPanel) 
     };
 
     // Show content
-    document.getElementById('role-loading').style.display = 'none';
-    document.getElementById('role-content').style.display = 'block';
+    document.getElementById('role-loading').classList.add('hidden');
+    document.getElementById('role-content').classList.remove('hidden');
 
     // Update request/response panel
     if (reqResPanel) {

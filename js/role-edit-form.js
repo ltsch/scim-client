@@ -16,7 +16,7 @@ export async function renderRoleEditForm(container, client, roleId, mainPanel, r
       <div class="spinner"></div>
       <p>Loading role...</p>
     </div>
-    <div class="form-container" id="role-edit-form" style="display: none;">
+    <div class="form-container hidden" id="role-edit-form">
       <form id="role-edit-form-element" class="resource-form">
         <div class="form-group">
           <label for="displayName">Display Name *</label>
@@ -77,8 +77,8 @@ export async function renderRoleEditForm(container, client, roleId, mainPanel, r
     document.getElementById('schemas').value = role.schemas ? role.schemas.join(', ') : '';
 
     // Show form
-    document.getElementById('role-edit-loading').style.display = 'none';
-    document.getElementById('role-edit-form').style.display = 'block';
+    document.getElementById('role-edit-loading').classList.add('hidden');
+    document.getElementById('role-edit-form').classList.remove('hidden');
 
     // Handle form submission
     document.getElementById('role-edit-form-element').addEventListener('submit', async (e) => {

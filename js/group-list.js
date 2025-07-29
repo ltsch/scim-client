@@ -29,7 +29,7 @@ export function renderGroupList(container, groups, onSelectGroup, options = {}) 
     container.innerHTML = '<div>No groups found.</div>';
     return;
   }
-  let html = `<table class="group-list-table">
+  let html = `<table class="data-table group-list-table">
     <thead><tr><th></th>${columns.map(col => `<th>${col}</th>`).join('')}</tr></thead>
     <tbody>`;
   groups.forEach((group, idx) => {
@@ -37,7 +37,7 @@ export function renderGroupList(container, groups, onSelectGroup, options = {}) 
       <td><button class="expand-btn" data-idx="${idx}">+</button></td>
       ${columns.map(col => `<td>${Array.isArray(group[col]) ? group[col].join(', ') : (group[col] ?? '')}</td>`).join('')}
     </tr>`;
-    html += `<tr class="details-row" id="details-${idx}" style="display:none;"><td colspan="${columns.length + 1}"></td></tr>`;
+    html += `<tr class="details-row hidden" id="details-${idx}"><td colspan="${columns.length + 1}"></td></tr>`;
   });
   html += '</tbody></table>';
   container.innerHTML = html;
@@ -46,13 +46,13 @@ export function renderGroupList(container, groups, onSelectGroup, options = {}) 
     btn.onclick = () => {
       const idx = btn.getAttribute('data-idx');
       const detailsRow = container.querySelector(`#details-${idx}`);
-      if (detailsRow.style.display === 'none') {
-        detailsRow.style.display = '';
+      if (detailsRow.classList.contains('hidden')) {
+        detailsRow.classList.remove('hidden');
         btn.textContent = '-';
         const group = groups[idx];
         renderJSON(detailsRow.cells[0], group);
       } else {
-        detailsRow.style.display = 'none';
+        detailsRow.classList.add('hidden');
         btn.textContent = '+';
         detailsRow.cells[0].innerHTML = '';
       }

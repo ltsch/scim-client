@@ -8,16 +8,7 @@ window.renderJSON = renderJSON;
 export function renderJSON(container, data) {
   if (typeof data === 'object' && data !== null) {
     const pre = document.createElement('pre');
-    pre.style.cssText = `
-      background: #f5f5f5;
-      border: 1px solid #ddd;
-      border-radius: 4px;
-      padding: 1em;
-      margin: 0.5em 0;
-      overflow-x: auto;
-      font-family: monospace;
-      font-size: 0.9em;
-    `;
+    pre.className = 'json-viewer';
     pre.textContent = JSON.stringify(data, null, 2);
     container.appendChild(pre);
   } else {
@@ -25,8 +16,20 @@ export function renderJSON(container, data) {
   }
 }
 
-export function showLoading(container, message = 'Loading...') {
-  container.innerHTML = `<div class="loading-spinner">${message}</div>`;
+export function showLoading(container, message = 'Loading...', details = '', type = 'default') {
+  const spinnerClass = type === 'retry' ? 'retry-loading' : 
+                      type === 'error-recovery' ? 'error-recovery' : 
+                      type === 'metadata' ? 'metadata-loading' : '';
+  
+  container.innerHTML = `
+    <div class="loading-spinner ${spinnerClass}">
+      <div class="spinner"></div>
+      <div class="loading-title">
+        ${message}
+      </div>
+      ${details ? `<div class="loading-description">${details}</div>` : ''}
+    </div>
+  `;
 }
 
 export function showError(container, error) {
@@ -97,33 +100,21 @@ export function showError(container, error) {
   // Create comprehensive error display
   const errorDiv = document.createElement('div');
   errorDiv.className = 'error-message';
-  errorDiv.style.cssText = `
-    color: #d32f2f;
-    background: #ffebee;
-    border: 1px solid #f44336;
-    border-radius: 4px;
-    padding: 1em;
-    margin: 1em 0;
-    font-family: monospace;
-    white-space: pre-wrap;
-    max-height: 600px;
-    overflow-y: auto;
-  `;
   
   // Build the error display HTML
   let errorHTML = `
-    <div style="font-weight: bold; margin-bottom: 0.5em; font-size: 1.1em;">❌ Error: ${escapeHTML(errorMessage)}</div>
-    <div style="margin-bottom: 0.5em; color: #666;">Type: ${errorType}</div>
+    <div class="error-title">❌ Error: ${escapeHTML(errorMessage)}</div>
+    <div class="error-type">Type: ${errorType}</div>
   `;
   
   // Add RFC context if available
   if (rfcContext) {
     errorHTML += `
-      <div style="background: #e3f2fd; border-left: 4px solid #2196f3; padding: 0.5em; margin: 0.5em 0; border-radius: 2px;">
-        <div style="font-weight: bold; color: #1976d2; margin-bottom: 0.25em;">📋 RFC Context</div>
-        <div style="color: #1565c0; margin-bottom: 0.25em;"><strong>Section:</strong> ${rfcContext.section}</div>
-        <div style="color: #1565c0; margin-bottom: 0.25em;"><strong>Requirement:</strong> ${rfcContext.requirement}</div>
-        <div style="color: #1565c0;"><strong>Impact:</strong> ${rfcContext.impact}</div>
+      <div class="error-rfc-context">
+        <div class="error-rfc-title">📋 RFC Context</div>
+        <div class="error-rfc-section"><strong>Section:</strong> ${rfcContext.section}</div>
+        <div class="error-rfc-requirement"><strong>Requirement:</strong> ${rfcContext.requirement}</div>
+        <div class="error-rfc-impact"><strong>Impact:</strong> ${rfcContext.impact}</div>
       </div>
     `;
   }
@@ -131,9 +122,9 @@ export function showError(container, error) {
   // Add stack trace if available
   if (errorStack) {
     errorHTML += `
-      <details style="margin-top: 0.5em;">
-        <summary style="cursor: pointer; color: #666; font-weight: bold;">📋 Show Stack Trace</summary>
-        <pre style="background: #f5f5f5; padding: 0.5em; margin: 0.5em 0; border-radius: 2px; font-size: 0.9em; color: #d32f2f;">${escapeHTML(errorStack)}</pre>
+      <details class="error-details-expanded">
+        <summary>📋 Show Stack Trace</summary>
+        <pre class="error-stack-trace">${escapeHTML(errorStack)}</pre>
       </details>
     `;
   }
@@ -141,18 +132,18 @@ export function showError(container, error) {
   // Add error details if available
   if (errorDetails) {
     errorHTML += `
-      <details style="margin-top: 0.5em;">
-        <summary style="cursor: pointer; color: #666; font-weight: bold;">🔍 Show Error Details</summary>
-        <pre style="background: #f5f5f5; padding: 0.5em; margin: 0.5em 0; border-radius: 2px; font-size: 0.9em;">${escapeHTML(errorDetails)}</pre>
+      <details class="error-details-expanded">
+        <summary>🔍 Show Error Details</summary>
+        <pre class="error-details-content">${escapeHTML(errorDetails)}</pre>
       </details>
     `;
   }
   
   // Add full error object for debugging (always show raw data)
   errorHTML += `
-    <details style="margin-top: 0.5em;">
-      <summary style="cursor: pointer; color: #666; font-weight: bold;">🔧 Show Full Error Object</summary>
-      <pre style="background: #f5f5f5; padding: 0.5em; margin: 0.5em 0; border-radius: 2px; font-size: 0.9em;">${escapeHTML(JSON.stringify(error, null, 2))}</pre>
+    <details class="error-details-expanded">
+      <summary>🔧 Show Full Error Object</summary>
+      <pre class="error-details-content">${escapeHTML(JSON.stringify(error, null, 2))}</pre>
     </details>
   `;
   

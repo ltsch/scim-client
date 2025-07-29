@@ -16,7 +16,7 @@ export async function renderEntitlementEditForm(container, client, entitlementId
       <div class="spinner"></div>
       <p>Loading entitlement...</p>
     </div>
-    <div class="form-container" id="entitlement-edit-form" style="display: none;">
+    <div class="form-container hidden" id="entitlement-edit-form">
       <form id="entitlement-edit-form-element" class="resource-form">
         <div class="form-group">
           <label for="displayName">Display Name *</label>
@@ -83,8 +83,8 @@ export async function renderEntitlementEditForm(container, client, entitlementId
     document.getElementById('schemas').value = entitlement.schemas ? entitlement.schemas.join(', ') : '';
 
     // Show form
-    document.getElementById('entitlement-edit-loading').style.display = 'none';
-    document.getElementById('entitlement-edit-form').style.display = 'block';
+    document.getElementById('entitlement-edit-loading').classList.add('hidden');
+    document.getElementById('entitlement-edit-form').classList.remove('hidden');
 
     // Handle form submission
     document.getElementById('entitlement-edit-form-element').addEventListener('submit', async (e) => {

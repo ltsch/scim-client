@@ -29,7 +29,7 @@ if netstat -tlnp 2>/dev/null | grep -q ":8080 "; then
     sleep 2
 fi
 
-echo "✅ Starting CORS proxy on http://localhost:8080"
+echo "✅ Starting CORS proxy on http://localhost:8002 (accessible via http://localhost:8001/proxy/)"
 echo "📝 Press Ctrl+C to stop the proxy"
 echo ""
 

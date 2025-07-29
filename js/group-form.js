@@ -26,7 +26,7 @@ export function renderGroupForm(container, onSubmit, options = {}) {
         return `<label>${label}<br><input type="${inputType}" id="${attr.name}" ${required}></label>`;
       }).join('')}
       <button type="submit">Create Group</button>
-      <div id="group-form-error" style="color:#b00;margin-top:1em;"></div>
+      <div id="group-form-error" class="form-error"></div>
     </form>
     <div id="group-create-reqres-panel"></div>
   `;
@@ -39,23 +39,19 @@ export function renderGroupForm(container, onSubmit, options = {}) {
     const toggleBtn = document.createElement('button');
     toggleBtn.textContent = 'Show Raw Request/Response';
     toggleBtn.className = 'reqres-toggle-btn';
-    toggleBtn.style.marginBottom = '0.5em';
+    toggleBtn.className = 'reqres-toggle-btn';
     const panel = document.createElement('div');
-    panel.style.display = 'none';
-    panel.style.background = '#fafafa';
-    panel.style.border = '1px solid #ddd';
-    panel.style.padding = '1em';
-    panel.style.overflowX = 'auto';
+    panel.className = 'reqres-panel';
     accordion.appendChild(toggleBtn);
     accordion.appendChild(panel);
     toggleBtn.onclick = () => {
-      if (panel.style.display === 'none') {
-        panel.style.display = 'block';
+      if (panel.classList.contains('hidden')) {
+        panel.classList.remove('hidden');
         toggleBtn.textContent = 'Hide Raw Request/Response';
         panel.innerHTML = '';
         window.renderJSON(panel, { request: req, response: res });
       } else {
-        panel.style.display = 'none';
+        panel.classList.add('hidden');
         toggleBtn.textContent = 'Show Raw Request/Response';
       }
     };

@@ -349,13 +349,13 @@ export class SCIMClient {
           message: 'Request timed out after 30 seconds',
           suggestion: 'Check network connectivity and server response time'
         };
-      } else if (e.name === 'TypeError') {
+              } else if (e.name === 'TypeError') {
         if (e.message.includes('fetch')) {
           errorDetails = {
             ...errorDetails,
             type: 'NETWORK_ERROR',
             message: 'Network request failed - fetch API not available',
-            suggestion: 'Check if the CORS proxy is running (http://localhost:8080) and the SCIM server is accessible'
+            suggestion: 'Check if the CORS proxy is running (/proxy/) and the SCIM server is accessible'
           };
         } else if (e.message.includes('CORS')) {
           errorDetails = {
@@ -398,7 +398,7 @@ export class SCIMClient {
           ...errorDetails,
           type: 'NETWORK_CONNECTION_ERROR',
           message: 'Network connection failed',
-          suggestion: 'Check if the CORS proxy is running (http://localhost:8080) and the SCIM server is accessible'
+          suggestion: 'Check if the CORS proxy is running (/proxy/) and the SCIM server is accessible'
         };
       } else if (e.message && e.message.includes('NetworkError')) {
         errorDetails = {

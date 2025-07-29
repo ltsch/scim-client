@@ -36,7 +36,7 @@ export function renderUserForm(container, onSubmit, options = {}) {
       </div>
       
       <button type="submit">Create User</button>
-      <div id="user-form-error" style="color:#b00;margin-top:1em;"></div>
+      <div id="user-form-error" class="form-error"></div>
     </form>
     <div id="user-create-reqres-panel"></div>
   `;
@@ -51,22 +51,18 @@ export function renderUserForm(container, onSubmit, options = {}) {
     const toggleBtn = document.createElement('button');
     toggleBtn.textContent = 'Show Raw Request/Response';
     toggleBtn.className = 'reqres-toggle-btn';
-    toggleBtn.style.marginBottom = '0.5em';
+    toggleBtn.className = 'reqres-toggle-btn';
     const panel = document.createElement('div');
-    panel.style.display = 'none';
-    panel.style.background = '#fafafa';
-    panel.style.border = '1px solid #ddd';
-    panel.style.padding = '1em';
-    panel.style.overflowX = 'auto';
+    panel.className = 'reqres-panel';
     accordion.appendChild(toggleBtn);
     accordion.appendChild(panel);
     toggleBtn.onclick = () => {
-      if (panel.style.display === 'none') {
-        panel.style.display = 'block';
+      if (panel.classList.contains('hidden')) {
+        panel.classList.remove('hidden');
         toggleBtn.textContent = 'Hide Raw Request/Response';
         panel.innerHTML = `<pre class="json-viewer">${escapeHTML(typeof req === 'object' ? JSON.stringify(req, null, 2) : String(req))}\n\n${escapeHTML(typeof res === 'object' ? JSON.stringify(res, null, 2) : String(res))}</pre>`;
       } else {
-        panel.style.display = 'none';
+        panel.classList.add('hidden');
         toggleBtn.textContent = 'Show Raw Request/Response';
       }
     };

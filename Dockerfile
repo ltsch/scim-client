@@ -8,14 +8,11 @@ WORKDIR /app
 # Copy package files
 COPY package*.json ./
 
-# Install dependencies
-RUN npm ci
+# Install dependencies (production only, exclude dev dependencies like Playwright)
+RUN npm ci --only=production
 
 # Copy source files
 COPY . .
-
-# Install Playwright browsers for testing
-RUN npx playwright install --with-deps
 
 # Stage 2: Production stage with nginx and Python
 FROM nginx:alpine AS production
@@ -25,7 +22,7 @@ RUN apk add --no-cache \
     python3 \
     py3-pip \
     curl \
-    && pip3 install --no-cache-dir requests==2.32.4
+    && pip3 install --no-cache-dir --break-system-packages requests==2.32.4
 
 # Copy nginx configuration
 COPY nginx.conf /etc/nginx/nginx.conf
@@ -38,15 +35,14 @@ COPY simple-cors-proxy.py /usr/local/bin/
 
 # Create startup script
 RUN echo '#!/bin/sh' > /usr/local/bin/start.sh && \
+    echo 'echo "Starting CORS proxy..."' >> /usr/local/bin/start.sh && \
     echo 'python3 /usr/local/bin/simple-cors-proxy.py &' >> /usr/local/bin/start.sh && \
+    echo 'sleep 2' >> /usr/local/bin/start.sh && \
+    echo 'echo "Starting nginx..."' >> /usr/local/bin/start.sh && \
     echo 'nginx -g "daemon off;"' >> /usr/local/bin/start.sh && \
     chmod +x /usr/local/bin/start.sh
 
-# Create non-root user for security
-RUN addgroup -g 1001 -S nginx && \
-    adduser -S -D -H -u 1001 -h /var/cache/nginx -s /sbin/nologin -G nginx -g nginx nginx
-
-# Set proper permissions
+# Set proper permissions for nginx user
 RUN chown -R nginx:nginx /usr/share/nginx/html && \
     chown -R nginx:nginx /var/cache/nginx && \
     chown -R nginx:nginx /var/log/nginx && \
@@ -54,8 +50,8 @@ RUN chown -R nginx:nginx /usr/share/nginx/html && \
     chown nginx:nginx /usr/local/bin/simple-cors-proxy.py && \
     chown nginx:nginx /usr/local/bin/start.sh
 
-# Switch to non-root user
-USER nginx
+# Create necessary directories with proper permissions
+RUN mkdir -p /run/nginx && chown nginx:nginx /run/nginx
 
 # Expose port
 EXPOSE 80

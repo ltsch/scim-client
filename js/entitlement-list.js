@@ -16,7 +16,7 @@ export async function renderEntitlementList(container, client, mainPanel, reqRes
       <div class="spinner"></div>
       <p>Loading entitlements...</p>
     </div>
-    <div class="content-area" id="entitlement-content" style="display: none;">
+    <div class="content-area hidden" id="entitlement-content">
       <div class="summary-stats" id="entitlement-stats"></div>
       <div class="resource-list" id="entitlement-list"></div>
     </div>
@@ -142,8 +142,8 @@ export async function renderEntitlementList(container, client, mainPanel, reqRes
     };
 
     // Show content
-    document.getElementById('entitlement-loading').style.display = 'none';
-    document.getElementById('entitlement-content').style.display = 'block';
+    document.getElementById('entitlement-loading').classList.add('hidden');
+    document.getElementById('entitlement-content').classList.remove('hidden');
 
     // Update request/response panel
     if (reqResPanel) {

@@ -26,9 +26,9 @@ export function renderServerCapabilities(container, serverConfig, resourceTypes,
               <div class="compliance-item ${check.status.toLowerCase()}">
                 <strong>${check.type}:</strong> ${check.status}
                 ${check.issues ? `
-                  <details style="margin-top: 0.5em;">
+                  <details class="compliance-details-expanded">
                     <summary>Show Issues</summary>
-                    <ul style="margin: 0.5em 0; padding-left: 1.5em;">
+                    <ul class="compliance-issues-list">
                       ${check.issues.map(issue => `<li>${issue.path}: ${issue.message}</li>`).join('')}
                     </ul>
                   </details>

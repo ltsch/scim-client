@@ -36,7 +36,7 @@ export function renderUserEditForm(container, user, onSubmit, options = {}) {
         return `<label>${label}<br><input type="${inputType}" id="${attr.name}" ${required} value="${value !== undefined ? value : ''}"></label>`;
       }).join('')}
       <button type="submit">Update User</button>
-      <div id="user-edit-form-error" style="color:#b00;margin-top:1em;"></div>
+      <div id="user-edit-form-error" class="form-error"></div>
     </form>
     <div id="user-edit-json-fields"></div>
     <div id="user-edit-readonly-fields"></div>
@@ -47,7 +47,7 @@ export function renderUserEditForm(container, user, onSubmit, options = {}) {
   const jsonFields = (schema && schema.attributes ? schema.attributes.filter(attr => typeof user[attr.name] === 'object' && user[attr.name] !== null && !SYSTEM_FIELDS.includes(attr.name)) : []);
   jsonFields.forEach(attr => {
     const fieldDiv = document.createElement('div');
-    fieldDiv.style.margin = '1em 0';
+    fieldDiv.className = 'json-field';
     fieldDiv.innerHTML = `<label>${attr.name} (view only):</label>`;
     renderJSON(fieldDiv, user[attr.name]);
     jsonFieldsDiv.appendChild(fieldDiv);
@@ -57,12 +57,12 @@ export function renderUserEditForm(container, user, onSubmit, options = {}) {
   SYSTEM_FIELDS.forEach(field => {
     if (user[field] !== undefined && user[field] !== null) {
       const fieldDiv = document.createElement('div');
-      fieldDiv.style.margin = '0.5em 0';
+      fieldDiv.className = 'readonly-field';
       if (typeof user[field] === 'object') {
         fieldDiv.innerHTML = `<label>${field} (read-only):</label>`;
         renderJSON(fieldDiv, user[field]);
       } else {
-        fieldDiv.innerHTML = `<label>${field} (read-only): <span style='color:#555;'>${user[field]}</span></label>`;
+        fieldDiv.innerHTML = `<label>${field} (read-only): <span class="readonly-value">${user[field]}</span></label>`;
       }
       readonlyDiv.appendChild(fieldDiv);
     }
@@ -76,22 +76,18 @@ export function renderUserEditForm(container, user, onSubmit, options = {}) {
     const toggleBtn = document.createElement('button');
     toggleBtn.textContent = 'Show Raw Request/Response';
     toggleBtn.className = 'reqres-toggle-btn';
-    toggleBtn.style.marginBottom = '0.5em';
+    toggleBtn.className = 'reqres-toggle-btn';
     const panel = document.createElement('div');
-    panel.style.display = 'none';
-    panel.style.background = '#fafafa';
-    panel.style.border = '1px solid #ddd';
-    panel.style.padding = '1em';
-    panel.style.overflowX = 'auto';
+    panel.className = 'reqres-panel';
     accordion.appendChild(toggleBtn);
     accordion.appendChild(panel);
     toggleBtn.onclick = () => {
-      if (panel.style.display === 'none') {
-        panel.style.display = 'block';
+      if (panel.classList.contains('hidden')) {
+        panel.classList.remove('hidden');
         toggleBtn.textContent = 'Hide Raw Request/Response';
         panel.innerHTML = `<pre class="json-viewer">${escapeHTML(typeof req === 'object' ? JSON.stringify(req, null, 2) : String(req))}\n\n${escapeHTML(typeof res === 'object' ? JSON.stringify(res, null, 2) : String(res))}</pre>`;
       } else {
-        panel.style.display = 'none';
+        panel.classList.add('hidden');
         toggleBtn.textContent = 'Show Raw Request/Response';
       }
     };
