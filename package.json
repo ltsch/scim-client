@@ -1,6 +1,25 @@
 {
+  "name": "scim-client",
+  "version": "1.0.0",
+  "description": "SCIM Client Test Harness with E2E Testing",
+  "scripts": {
+    "start": "python3 -m http.server 8001",
+    "test": "playwright test",
+    "test:headed": "playwright test --headed",
+    "test:debug": "playwright test --debug",
+    "test:ui": "playwright test --ui",
+    "test:report": "playwright show-report",
+    "install-browsers": "playwright install",
+    "api-test": "./run-api-tests.sh",
+    "setup-test-env": "./test-setup.sh"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.40.0"
+  },
   "dependencies": {
-    "cors-anywhere": "^0.4.4",
-    "http-server": "^14.1.1"
-  }
+    "ajv": "^8.12.0"
+  },
+  "keywords": ["scim", "testing", "e2e", "identity-management"],
+  "author": "SCIM Client Team",
+  "license": "MIT"
 }

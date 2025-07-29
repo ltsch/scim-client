@@ -31,6 +31,15 @@ build/
 *.bak
 *.tmp
 
+# Testing and development
+test-results/
+test-report.txt
+playwright-report/
+playwright/.cache/
+.pytest_cache/
+test*.sh
+run-*-tests.sh
+
 # Do NOT ignore vendor/ or any source files
 !vendor/
 !vendor/jquery-jsonview/

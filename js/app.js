@@ -8,6 +8,12 @@ import { renderUserForm } from './user-form.js';
 import { renderUserEditForm } from './user-edit-form.js';
 import { renderGroupForm } from './group-form.js';
 import { renderGroupEditForm } from './group-edit-form.js';
+import { renderEntitlementList } from './entitlement-list.js';
+import { renderEntitlementForm } from './entitlement-form.js';
+import { renderEntitlementEditForm } from './entitlement-edit-form.js';
+import { renderRoleList } from './role-list.js';
+import { renderRoleForm } from './role-form.js';
+import { renderRoleEditForm } from './role-edit-form.js';
 
 const CONFIG_KEYS = {
   SCIM_ENDPOINT: 'scim_endpoint',
@@ -440,7 +446,7 @@ window.onpopstate = function (event) {
   renderApp();
 };
 
-// Replace the IIFE that sets currentSection with a function that waits for metadata
+// On initial load, fetch metadata then render
 (async function initApp() {
   const client = new SCIMClient();
   await fetchScimMetadata(client);
@@ -448,7 +454,71 @@ window.onpopstate = function (event) {
   const section = getSectionFromQuery();
   currentSection = section;
   renderApp();
+  
+  // Add global event listener for navigation
+  document.addEventListener('navigate', (event) => {
+    const { section, action, id } = event.detail;
+    currentSection = section;
+    
+    if (action === 'create') {
+      renderCreateForm(section);
+    } else if (action === 'edit' && id) {
+      renderEditForm(section, id);
+    } else if (action === 'view' && id) {
+      renderDetailView(section, id);
+    } else {
+      renderApp();
+    }
+  });
 })();
+
+// Helper functions for handling navigation actions
+function renderCreateForm(section) {
+  const mainPanel = document.getElementById('main-panel');
+  const client = new SCIMClient();
+  const reqResPanel = document.createElement('div');
+  reqResPanel.className = 'req-res-panel';
+  
+  mainPanel.innerHTML = '';
+  mainPanel.appendChild(reqResPanel);
+  
+  if (section === 'entitlements') {
+    renderEntitlementForm(mainPanel, client, mainPanel, reqResPanel);
+  } else if (section === 'roles') {
+    renderRoleForm(mainPanel, client, mainPanel, reqResPanel);
+  } else if (section === 'users') {
+    renderUserForm(mainPanel, client, mainPanel, reqResPanel);
+  } else if (section === 'groups') {
+    renderGroupForm(mainPanel, client, mainPanel, reqResPanel);
+  }
+}
+
+function renderEditForm(section, id) {
+  const mainPanel = document.getElementById('main-panel');
+  const client = new SCIMClient();
+  const reqResPanel = document.createElement('div');
+  reqResPanel.className = 'req-res-panel';
+  
+  mainPanel.innerHTML = '';
+  mainPanel.appendChild(reqResPanel);
+  
+  if (section === 'entitlements') {
+    renderEntitlementEditForm(mainPanel, client, id, mainPanel, reqResPanel);
+  } else if (section === 'roles') {
+    renderRoleEditForm(mainPanel, client, id, mainPanel, reqResPanel);
+  } else if (section === 'users') {
+    renderUserEditForm(mainPanel, client, id, mainPanel, reqResPanel);
+  } else if (section === 'groups') {
+    renderGroupEditForm(mainPanel, client, id, mainPanel, reqResPanel);
+  }
+}
+
+function renderDetailView(section, id) {
+  // For now, just navigate back to the list view
+  // This can be enhanced later to show detailed views
+  currentSection = section;
+  renderApp();
+}
 
 function clearAllScimData() {
   Object.values(METADATA_CACHE_KEYS).forEach(key => localStorage.removeItem(key));
@@ -483,13 +553,51 @@ function renderSection(section) {
   const client = new SCIMClient();
   const resourceTypes = getSupportedResourceTypes();
   const resource = resourceTypes.find(rt => rt.id === section);
+  
   if (resource) {
-    renderResourceSection(mainPanel, client, resource);
+    // Handle specific resource types with custom components
+    if (section === 'users') {
+      renderUsersSection(mainPanel, client, resource);
+    } else if (section === 'groups') {
+      renderGroupsSection(mainPanel, client, resource);
+    } else if (section === 'entitlements') {
+      renderEntitlementsSection(mainPanel, client, resource);
+    } else if (section === 'roles') {
+      renderRolesSection(mainPanel, client, resource);
+    } else {
+      // Generic handling for other resource types
+      renderResourceSection(mainPanel, client, resource);
+    }
   } else if (section === 'config') {
     renderServerConfigSection(mainPanel, client);
   } else if (section === 'settings') {
     renderSettingsSection(mainPanel);
   }
+}
+
+// Add new section renderers for entitlements and roles
+async function renderEntitlementsSection(mainPanel, client, resource) {
+  const container = document.createElement('div');
+  const reqResPanel = document.createElement('div');
+  reqResPanel.className = 'req-res-panel';
+  
+  mainPanel.innerHTML = '';
+  mainPanel.appendChild(container);
+  mainPanel.appendChild(reqResPanel);
+  
+  await renderEntitlementList(container, client, mainPanel, reqResPanel);
+}
+
+async function renderRolesSection(mainPanel, client, resource) {
+  const container = document.createElement('div');
+  const reqResPanel = document.createElement('div');
+  reqResPanel.className = 'req-res-panel';
+  
+  mainPanel.innerHTML = '';
+  mainPanel.appendChild(container);
+  mainPanel.appendChild(reqResPanel);
+  
+  await renderRoleList(container, client, mainPanel, reqResPanel);
 }
 
 async function renderResourceSection(mainPanel, client, resource) {
@@ -1353,6 +1461,22 @@ ${escapeHTML(typeof res === 'object' ? JSON.stringify(res, null, 2) : String(res
   const section = getSectionFromQuery();
   currentSection = section;
   renderApp();
+  
+  // Add global event listener for navigation
+  document.addEventListener('navigate', (event) => {
+    const { section, action, id } = event.detail;
+    currentSection = section;
+    
+    if (action === 'create') {
+      renderCreateForm(section);
+    } else if (action === 'edit' && id) {
+      renderEditForm(section, id);
+    } else if (action === 'view' && id) {
+      renderDetailView(section, id);
+    } else {
+      renderApp();
+    }
+  });
 })(); 
 
 function escapeHTML(str) {

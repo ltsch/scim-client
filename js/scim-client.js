@@ -12,25 +12,84 @@ export class SCIMClient {
       'Accept': 'application/scim+json',
       'Content-Type': 'application/scim+json'
     };
+    this.discoveredEndpoints = null;
+    this.schemas = null;
+    this.resourceTypes = null;
+  }
+
+  // Discovery Methods
+  async discoverEndpoints() {
+    if (this.discoveredEndpoints) {
+      return this.discoveredEndpoints;
+    }
+
+    try {
+      console.log('SCIMClient.discoverEndpoints: Starting concurrent API discovery...');
+      
+      // Use Promise.all() for concurrent API calls instead of sequential
+      const [spConfig, resourceTypes, schemas] = await Promise.all([
+        this.getServiceProviderConfig(),
+        this.getResourceTypes(),
+        this.getSchemas()
+      ]);
+      
+      console.log('SCIMClient.discoverEndpoints: All discovery calls completed concurrently');
+      
+      this.discoveredEndpoints = {
+        serviceProviderConfig: spConfig,
+        resourceTypes: resourceTypes,
+        schemas: schemas
+      };
+      
+      return this.discoveredEndpoints;
+    } catch (error) {
+      console.error('SCIMClient.discoverEndpoints: Failed to discover endpoints:', error);
+      
+      // Provide detailed error information for debugging
+      const errorDetails = {
+        message: error.message,
+        type: error.name,
+        timestamp: new Date().toISOString(),
+        suggestion: 'Check server connectivity and API endpoint availability'
+      };
+      
+      console.error('SCIMClient.discoverEndpoints: Error details:', errorDetails);
+      
+      // Return null to indicate discovery failure
+      return null;
+    }
   }
 
   async getServiceProviderConfig() {
     return await this._fetch('/ServiceProviderConfig');
   }
 
+  async getResourceTypes() {
+    return await this._fetch('/ResourceTypes');
+  }
+
+  async getSchemas() {
+    return await this._fetch('/Schemas');
+  }
+
+  // User Methods
   async getUsers(params = {}) {
     return await this._fetch('/Users', params);
   }
 
-  async getGroups(params = {}) {
-    return await this._fetch('/Groups', params);
+  async getUser(userId) {
+    return await this._fetch(`/Users/${userId}`);
   }
 
   async createUser(userData) {
     return await this._fetch('/Users', {}, 'POST', userData);
   }
 
-  async updateUser(userId, patchOps) {
+  async updateUser(userId, userData) {
+    return await this._fetch(`/Users/${userId}`, {}, 'PUT', userData);
+  }
+
+  async patchUser(userId, patchOps) {
     return await this._fetch(`/Users/${userId}`, {}, 'PATCH', patchOps);
   }
 
@@ -38,16 +97,152 @@ export class SCIMClient {
     return await this._fetch(`/Users/${userId}`, {}, 'DELETE');
   }
 
+  // Group Methods
+  async getGroups(params = {}) {
+    return await this._fetch('/Groups', params);
+  }
+
+  async getGroup(groupId) {
+    return await this._fetch(`/Groups/${groupId}`);
+  }
+
   async createGroup(groupData) {
     return await this._fetch('/Groups', {}, 'POST', groupData);
   }
 
-  async updateGroup(groupId, patchOps) {
+  async updateGroup(groupId, groupData) {
+    return await this._fetch(`/Groups/${groupId}`, {}, 'PUT', groupData);
+  }
+
+  async patchGroup(groupId, patchOps) {
     return await this._fetch(`/Groups/${groupId}`, {}, 'PATCH', patchOps);
   }
 
   async deleteGroup(groupId) {
     return await this._fetch(`/Groups/${groupId}`, {}, 'DELETE');
+  }
+
+  // Entitlement Methods
+  async getEntitlements(params = {}) {
+    return await this._fetch('/Entitlements', params);
+  }
+
+  async getEntitlement(entitlementId) {
+    return await this._fetch(`/Entitlements/${entitlementId}`);
+  }
+
+  async createEntitlement(entitlementData) {
+    return await this._fetch('/Entitlements', {}, 'POST', entitlementData);
+  }
+
+  async updateEntitlement(entitlementId, entitlementData) {
+    return await this._fetch(`/Entitlements/${entitlementId}`, {}, 'PUT', entitlementData);
+  }
+
+  async patchEntitlement(entitlementId, patchOps) {
+    return await this._fetch(`/Entitlements/${entitlementId}`, {}, 'PATCH', patchOps);
+  }
+
+  async deleteEntitlement(entitlementId) {
+    return await this._fetch(`/Entitlements/${entitlementId}`, {}, 'DELETE');
+  }
+
+  // Role Methods
+  async getRoles(params = {}) {
+    return await this._fetch('/Roles', params);
+  }
+
+  async getRole(roleId) {
+    return await this._fetch(`/Roles/${roleId}`);
+  }
+
+  async createRole(roleData) {
+    return await this._fetch('/Roles', {}, 'POST', roleData);
+  }
+
+  async updateRole(roleId, roleData) {
+    return await this._fetch(`/Roles/${roleId}`, {}, 'PUT', roleData);
+  }
+
+  async patchRole(roleId, patchOps) {
+    return await this._fetch(`/Roles/${roleId}`, {}, 'PATCH', patchOps);
+  }
+
+  async deleteRole(roleId) {
+    return await this._fetch(`/Roles/${roleId}`, {}, 'DELETE');
+  }
+
+  // Schema Validation
+  async validateResource(resourceType, data) {
+    try {
+      const discovery = await this.discoverEndpoints();
+      if (!discovery || !discovery.schemas.ok) {
+        return { valid: true, warnings: ['Schema validation unavailable'] };
+      }
+
+      const schemas = discovery.schemas.data.Resources || [];
+      const schema = schemas.find(s => s.id === resourceType);
+      
+      if (!schema) {
+        return { valid: true, warnings: [`Schema for ${resourceType} not found`] };
+      }
+
+      // Basic validation - check required fields
+      const requiredFields = schema.attributes?.filter(attr => attr.required) || [];
+      const missingFields = requiredFields.filter(field => !data[field.name]);
+      
+      if (missingFields.length > 0) {
+        return {
+          valid: false,
+          errors: [`Missing required fields: ${missingFields.map(f => f.name).join(', ')}`]
+        };
+      }
+
+      return { valid: true };
+    } catch (error) {
+      console.warn('Schema validation failed:', error);
+      return { valid: true, warnings: ['Schema validation failed'] };
+    }
+  }
+
+  // Get available resource types
+  async getAvailableResourceTypes() {
+    try {
+      const discovery = await this.discoverEndpoints();
+      if (!discovery || !discovery.resourceTypes.ok) {
+        return ['User', 'Group']; // Fallback to basic types
+      }
+
+      return discovery.resourceTypes.data.Resources?.map(rt => rt.name) || ['User', 'Group'];
+    } catch (error) {
+      console.warn('Failed to get resource types:', error);
+      return ['User', 'Group']; // Fallback
+    }
+  }
+
+  // Generic resource methods
+  async getResources(resourceType, params = {}) {
+    return await this._fetch(`/${resourceType}`, params);
+  }
+
+  async getResource(resourceType, resourceId) {
+    return await this._fetch(`/${resourceType}/${resourceId}`);
+  }
+
+  async createResource(resourceType, data) {
+    return await this._fetch(`/${resourceType}`, {}, 'POST', data);
+  }
+
+  async updateResource(resourceType, resourceId, data) {
+    return await this._fetch(`/${resourceType}/${resourceId}`, {}, 'PUT', data);
+  }
+
+  async patchResource(resourceType, resourceId, patchOps) {
+    return await this._fetch(`/${resourceType}/${resourceId}`, {}, 'PATCH', patchOps);
+  }
+
+  async deleteResource(resourceType, resourceId) {
+    return await this._fetch(`/${resourceType}/${resourceId}`, {}, 'DELETE');
   }
 
   async _fetch(path, params = {}, method = 'GET', body = null) {

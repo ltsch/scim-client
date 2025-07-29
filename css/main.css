@@ -1,22 +1,92 @@
+/* css/main.css - Main layout and global styles */
+
+/* CSS Reset and Base Styles */
+* {
+  box-sizing: border-box;
+}
+
 body {
   margin: 0;
-  font-family: system-ui, sans-serif;
+  padding: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
   background: #f8f9fa;
-  color: #222;
+  color: #333;
+  line-height: 1.6;
+  font-size: 14px;
 }
 
+/* Improved container width for developer tools */
 #app {
-  max-width: 900px;
-  margin: 2rem auto;
+  max-width: 1400px; /* Increased from 900px for better developer experience */
+  margin: 0 auto;
   background: #fff;
   border-radius: 8px;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.07);
-  padding: 2rem;
-  min-height: 400px;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.1);
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
 }
 
+/* Main layout structure */
 .container {
   display: flex;
   flex-direction: column;
   gap: 1.5rem;
+  padding: 2rem;
+  flex: 1;
+}
+
+/* Responsive design */
+@media (max-width: 1200px) {
+  #app {
+    max-width: 95%;
+    margin: 1rem auto;
+  }
+}
+
+@media (max-width: 768px) {
+  #app {
+    max-width: 100%;
+    margin: 0;
+    border-radius: 0;
+  }
+  
+  .container {
+    padding: 1rem;
+  }
+}
+
+/* Typography improvements */
+h1, h2, h3, h4, h5, h6 {
+  margin: 0 0 1rem 0;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+h1 { font-size: 2rem; }
+h2 { font-size: 1.75rem; }
+h3 { font-size: 1.5rem; }
+h4 { font-size: 1.25rem; }
+h5 { font-size: 1.1rem; }
+h6 { font-size: 1rem; }
+
+p {
+  margin: 0 0 1rem 0;
+}
+
+/* Focus states for accessibility */
+button:focus,
+input:focus,
+select:focus,
+textarea:focus {
+  outline: 2px solid #007bff;
+  outline-offset: 2px;
+}
+
+/* Print styles */
+@media print {
+  #app {
+    box-shadow: none;
+    max-width: none;
+  }
 } 
