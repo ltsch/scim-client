@@ -3,7 +3,8 @@
   "version": "1.0.0",
   "description": "SCIM Client Test Harness with E2E Testing",
   "scripts": {
-    "start": "python3 -m http.server 8001",
+    "start": "npx http-server -p 8001 -o",
+    "build": "echo 'Static files are ready to serve'",
     "test": "playwright test",
     "test:headed": "playwright test --headed",
     "test:debug": "playwright test --debug",
@@ -14,7 +15,8 @@
     "setup-test-env": "./test-setup.sh"
   },
   "devDependencies": {
-    "@playwright/test": "^1.40.0"
+    "@playwright/test": "^1.40.0",
+    "http-server": "^14.1.1"
   },
   "dependencies": {
     "ajv": "^8.12.0"

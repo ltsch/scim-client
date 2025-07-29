@@ -25,13 +25,23 @@ cd ~/scim-server
 source .venv/bin/activate
 python run_server.py
 
-# Terminal 2: Start SCIM Client
+# Terminal 2: Start SCIM Client (Docker)
 cd ~/scim-client
-python3 -m http.server 8001
+docker compose up --build -d
 
 # Terminal 3: Generate Test Data
 cd ~/scim-server
 ./generate_test_data.sh
+```
+
+### Docker Setup (Recommended)
+```bash
+# Build and start the SCIM client with nginx
+cd ~/scim-client
+docker compose up --build -d
+
+# The client will be available at http://localhost:8001
+# The CORS proxy is integrated and available at http://localhost:8001/proxy/
 ```
 
 ### Test Configuration

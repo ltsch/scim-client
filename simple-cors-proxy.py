@@ -84,6 +84,8 @@ class CORSProxy(BaseHTTPRequestHandler):
             self.wfile.write(str(e).encode())
 
 if __name__ == '__main__':
-    print('Multi-threaded Python CORS proxy running on http://localhost:8080')
-    server = ThreadingTCPServer(('localhost', 8080), CORSProxy)
+    import os
+    port = int(os.environ.get('CORS_PROXY_PORT', 8002))
+    print(f'Multi-threaded Python CORS proxy running on http://localhost:{port}')
+    server = ThreadingTCPServer(('0.0.0.0', port), CORSProxy)
     server.serve_forever() 
