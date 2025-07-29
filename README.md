@@ -143,7 +143,9 @@ scim-client/
 │   ├── entitlement-*.js  # Entitlement management
 │   └── role-*.js         # Role management
 ├── css/                   # Stylesheets
-│   └── components.css    # Modern UI components
+│   ├── main.css          # Global layout and typography
+│   ├── components.css    # Unified UI components
+│   └── accessibility.css # Accessibility and focus states
 ├── vendor/               # Third-party libraries
 │   └── jquery-jsonview/  # JSON viewer
 ├── tests/                # Test files
@@ -152,6 +154,48 @@ scim-client/
 ├── *.md                  # Documentation (consolidated here)
 └── index.html           # Main application
 ```
+
+---
+
+## 🎨 CSS Architecture
+
+### Unified Design System
+The CSS has been unified to reduce complexity and eliminate redundant styles across all components. This consolidation ensures consistent styling patterns and improved maintainability.
+
+#### Key Unified Components
+
+**Data Tables (`.data-table`)**
+- Single unified class for all data displays (Users, Groups, Entitlements, Roles)
+- Consistent styling, hover effects, and accessibility features
+- Legacy compatibility maintained for existing class names
+
+**Button System (`.btn`)**
+- Unified button styles with variants: `.btn-primary`, `.btn-secondary`, `.btn-danger`, `.btn-sm`
+- Consistent focus states and accessibility features
+- Single source of truth for all button interactions
+
+**Form System (`.form-container`)**
+- Unified form layout and styling across all resource types
+- Consistent validation states and error handling
+- Standardized form controls and spacing
+
+**Resource Cards (`.resource-card`)**
+- Unified card patterns for all resource displays
+- Consistent hover effects and interactions
+- Standardized spacing and typography
+
+#### Benefits Achieved
+- **Reduced Complexity**: Eliminated redundant styles and consolidated patterns
+- **Improved Maintainability**: Single source of truth for common components
+- **Enhanced Consistency**: All components follow unified design patterns
+- **Better Performance**: Reduced CSS file size and more efficient selectors
+- **Future-Proof**: Easy to extend and maintain design system
+
+#### Legacy Compatibility
+All existing class names continue to work for backward compatibility:
+- `.user-list-table` → inherits from `.data-table`
+- `.user-form` → inherits from `.form-container`
+- All existing button classes remain functional
 
 ---
 
