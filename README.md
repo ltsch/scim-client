@@ -195,6 +195,88 @@ The CORS proxy will run on `http://localhost:8080` and can be enabled in the cli
 
 ---
 
+## 🐳 Docker Setup
+
+### Quick Start with Docker
+```bash
+# Build and start the services
+docker-compose up -d
+
+# View logs
+docker-compose logs -f
+
+# Stop services
+docker-compose down
+```
+
+### Docker Services
+
+#### SCIM Client (Port 8001)
+The main web application with full SCIM testing capabilities.
+
+```bash
+# Build and run just the client
+docker-compose up scim-client
+
+# Access the application
+open http://localhost:8001
+```
+
+#### CORS Proxy (Port 8002)
+Optional CORS proxy service for development and testing.
+
+```bash
+# Start the CORS proxy
+docker-compose up cors-proxy
+
+# Use in client configuration
+# Proxy URL: http://localhost:8002
+```
+
+### Environment Configuration
+Create a `.env` file in the project root:
+
+```bash
+# Copy the template
+cp .env.example .env
+
+# Edit with your values
+SCIM_ENDPOINT=https://your-scim-server.example.com/scim/v2
+SCIM_API_KEY=your-api-key-here
+CORS_PROXY_PORT=8002
+```
+
+### Docker Development
+```bash
+# Build with no cache (for dependency updates)
+docker-compose build --no-cache
+
+# Run in development mode with volume mounts
+docker-compose up -d
+
+# Execute commands in running container
+docker-compose exec scim-client npm test
+docker-compose exec scim-client npx playwright test
+
+# View container logs
+docker-compose logs scim-client
+```
+
+### Production Deployment
+```bash
+# Build optimized image
+docker build -t scim-client:latest .
+
+# Run with environment variables
+docker run -d \
+  -p 8001:8001 \
+  -e SCIM_ENDPOINT=https://your-server.com/scim/v2 \
+  -e SCIM_API_KEY=your-key \
+  scim-client:latest
+```
+
+---
+
 ## 📊 Performance & Compatibility
 
 ### Performance Benchmarks
