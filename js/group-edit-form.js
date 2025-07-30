@@ -12,38 +12,61 @@ function getSchemaAttributes(schema) {
 export function renderGroupEditForm(container, group, onSubmit, options = {}) {
   const { schema } = options;
   const attributes = getSchemaAttributes(schema);
-  container.innerHTML = `
-    <form id="group-edit-form" class="user-form">
+  
+  // Create modal overlay
+  const modalOverlay = document.createElement('div');
+  modalOverlay.className = 'modal-overlay';
+  
+  // Create modal container
+  const modalContainer = document.createElement('div');
+  modalContainer.className = 'modal-container';
+  
+  // Create modal content
+  modalContainer.innerHTML = `
+    <div class="modal-header">
       <h2>Edit Group</h2>
-      ${attributes.map(attr => {
-        const required = attr.required ? 'required' : '';
-        const label = attr.name + (attr.required ? ' *' : '');
-        let inputType = 'text';
-        let value = group[attr.name];
-        if (attr.type === 'boolean') inputType = 'checkbox';
-        if (attr.type === 'integer' || attr.type === 'decimal') inputType = 'number';
-        if (typeof value === 'object' && value !== null) {
-          // Render as expandable JSON below, not as input
-          return '';
-        }
-        if (attr.multiValued && attr.type === 'string') {
-          value = Array.isArray(value) ? value.join(', ') : '';
-          return `<label>${label}<br><input type="text" id="${attr.name}" ${required} value="${value || ''}" placeholder="comma,separated,values"></label>`;
-        }
-        if (attr.type === 'boolean') {
-          return `<label>${label}<br><input type="checkbox" id="${attr.name}" ${required} ${value ? 'checked' : ''}></label>`;
-        }
-        return `<label>${label}<br><input type="${inputType}" id="${attr.name}" ${required} value="${value !== undefined ? value : ''}"></label>`;
-      }).join('')}
-      <button type="submit">Update Group</button>
-      <div id="group-edit-form-error" class="form-error"></div>
-    </form>
-    <div id="group-edit-json-fields"></div>
-    <div id="group-edit-readonly-fields"></div>
-    <div id="group-edit-reqres-panel"></div>
+      <button class="modal-close" onclick="this.closest('.modal-overlay').remove()">&times;</button>
+    </div>
+    <div class="modal-body">
+      <form id="group-edit-form" class="user-form">
+        ${attributes.map(attr => {
+          const required = attr.required ? 'required' : '';
+          const label = attr.name + (attr.required ? ' *' : '');
+          let inputType = 'text';
+          let value = group[attr.name];
+          if (attr.type === 'boolean') inputType = 'checkbox';
+          if (attr.type === 'integer' || attr.type === 'decimal') inputType = 'number';
+          if (typeof value === 'object' && value !== null) {
+            // Render as expandable JSON below, not as input
+            return '';
+          }
+          if (attr.multiValued && attr.type === 'string') {
+            value = Array.isArray(value) ? value.join(', ') : '';
+            return `<label>${label}<br><input type="text" id="${attr.name}" ${required} value="${value || ''}" placeholder="comma,separated,values"></label>`;
+          }
+          if (attr.type === 'boolean') {
+            return `<label>${label}<br><input type="checkbox" id="${attr.name}" ${required} ${value ? 'checked' : ''}></label>`;
+          }
+          return `<label>${label}<br><input type="${inputType}" id="${attr.name}" ${required} value="${value !== undefined ? value : ''}"></label>`;
+        }).join('')}
+        <div id="group-edit-form-error" class="form-error"></div>
+      </form>
+      <div id="group-edit-json-fields"></div>
+      <div id="group-edit-readonly-fields"></div>
+      <div id="group-edit-reqres-panel"></div>
+    </div>
+    <div class="modal-footer">
+      <button type="button" class="btn btn-secondary" onclick="this.closest('.modal-overlay').remove()">Cancel</button>
+      <button type="submit" form="group-edit-form" class="btn btn-primary">Update Group</button>
+    </div>
   `;
+  
+  // Append modal to body
+  modalOverlay.appendChild(modalContainer);
+  document.body.appendChild(modalOverlay);
+  
   // Render object/array fields as expandable JSON
-  const jsonFieldsDiv = container.querySelector('#group-edit-json-fields');
+  const jsonFieldsDiv = modalContainer.querySelector('#group-edit-json-fields');
   const jsonFields = (schema && schema.attributes ? schema.attributes.filter(attr => typeof group[attr.name] === 'object' && group[attr.name] !== null && !SYSTEM_FIELDS.includes(attr.name)) : []);
   jsonFields.forEach(attr => {
     const fieldDiv = document.createElement('div');
@@ -52,8 +75,9 @@ export function renderGroupEditForm(container, group, onSubmit, options = {}) {
     renderJSON(fieldDiv, group[attr.name]);
     jsonFieldsDiv.appendChild(fieldDiv);
   });
+  
   // Render read-only/system fields at the bottom
-  const readonlyDiv = container.querySelector('#group-edit-readonly-fields');
+  const readonlyDiv = modalContainer.querySelector('#group-edit-readonly-fields');
   SYSTEM_FIELDS.forEach(field => {
     if (group[field] !== undefined && group[field] !== null) {
       const fieldDiv = document.createElement('div');
@@ -67,8 +91,10 @@ export function renderGroupEditForm(container, group, onSubmit, options = {}) {
       readonlyDiv.appendChild(fieldDiv);
     }
   });
-  const form = container.querySelector('#group-edit-form');
-  const reqresPanel = container.querySelector('#group-edit-reqres-panel');
+  
+  const form = modalContainer.querySelector('#group-edit-form');
+  const reqresPanel = modalContainer.querySelector('#group-edit-reqres-panel');
+  
   function showReqResAccordion(req, res) {
     reqresPanel.innerHTML = '';
     const accordion = document.createElement('div');
@@ -97,14 +123,18 @@ export function renderGroupEditForm(container, group, onSubmit, options = {}) {
   function escapeHTML(str) {
     return String(str).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;','\'':'&#39;'}[c]));
   }
-  form.onsubmit = (e) => {
+  
+  // Handle form submission
+  form.onsubmit = async (e) => {
     e.preventDefault();
     const errorDiv = form.querySelector('#group-edit-form-error');
     const updatedGroup = { schemas: [schema.id], id: group.id };
     let hasError = false;
     attributes.forEach(attr => {
-      let value = form[attr.name].value;
-      if (attr.type === 'boolean') value = form[attr.name].checked;
+      const input = form[attr.name];
+      if (!input) return; // Skip attributes with no input (e.g., objects/arrays)
+      let value = input.value;
+      if (attr.type === 'boolean') value = input.checked;
       if (attr.multiValued && attr.type === 'string') {
         value = value.split(',').map(s => s.trim()).filter(Boolean);
       }
@@ -120,10 +150,34 @@ export function renderGroupEditForm(container, group, onSubmit, options = {}) {
       return;
     }
     errorDiv.textContent = '';
-    onSubmit(updatedGroup).then(result => {
+    
+    try {
+      const result = await onSubmit(updatedGroup);
       if (result && result.__req && result.__res) {
         showReqResAccordion(result.__req, result.__res);
       }
-    });
+      // Close modal on successful submission
+      if (result && result.__res && result.__res.ok) {
+        modalOverlay.remove();
+      }
+    } catch (error) {
+      errorDiv.textContent = `Error: ${error.message}`;
+    }
   };
+  
+  // Close modal when clicking outside
+  modalOverlay.addEventListener('click', (e) => {
+    if (e.target === modalOverlay) {
+      modalOverlay.remove();
+    }
+  });
+  
+  // Close modal on Escape key
+  const handleEscape = (e) => {
+    if (e.key === 'Escape') {
+      modalOverlay.remove();
+      document.removeEventListener('keydown', handleEscape);
+    }
+  };
+  document.addEventListener('keydown', handleEscape);
 } 

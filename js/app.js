@@ -6,8 +6,10 @@ import { renderUserList } from './user-list.js';
 import { renderGroupList } from './group-list.js';
 import { renderUserForm } from './user-form.js';
 import { renderUserEditForm } from './user-edit-form.js';
+import { renderUserCreateModal } from './user-create-modal.js';
 import { renderGroupForm } from './group-form.js';
 import { renderGroupEditForm } from './group-edit-form.js';
+import { renderGroupCreateModal } from './group-create-modal.js';
 import { renderEntitlementList } from './entitlement-list.js';
 import { renderEntitlementForm } from './entitlement-form.js';
 import { renderEntitlementEditForm } from './entitlement-edit-form.js';
@@ -982,65 +984,159 @@ async function renderUsersSection(mainPanel, client, resource) {
   desc.textContent = 'View, create, edit, and delete users. All actions show raw SCIM requests and responses.';
   desc.className = 'info-description';
   mainPanel.appendChild(desc);
+  
+  // Create action row with create button and search/filter controls
+  const actionRow = document.createElement('div');
+  actionRow.className = 'action-row';
+  mainPanel.appendChild(actionRow);
+  
+  // Create user button
+  const createBtn = document.createElement('button');
+  createBtn.textContent = 'Create User';
+  createBtn.className = 'btn btn-primary';
+  actionRow.appendChild(createBtn);
+  
+  // Search box
+  const searchContainer = document.createElement('div');
+  searchContainer.className = 'search-container';
+  const searchLabel = document.createElement('label');
+  searchLabel.textContent = 'Quick Search:';
+  searchLabel.className = 'search-label';
+  const searchInput = document.createElement('input');
+  searchInput.type = 'text';
+  searchInput.placeholder = 'Search by username, name, email...';
+  searchInput.className = 'form-control';
+  searchContainer.appendChild(searchLabel);
+  searchContainer.appendChild(searchInput);
+  actionRow.appendChild(searchContainer);
+  
   const reqResPanel = document.createElement('div');
   reqResPanel.className = 'reqres-panel-container';
   mainPanel.appendChild(reqResPanel);
-  showLoading(mainPanel, 'Loading users...');
-  const users = await client.getUsers({ count: 10 });
-  mainPanel.innerHTML = '';
-  mainPanel.appendChild(header);
-  mainPanel.appendChild(desc);
-  mainPanel.appendChild(reqResPanel);
-  window.renderJSON(reqResPanel, {
-    request: {
-      method: 'GET',
-      url: client.useProxy ? LOCAL_CORS_PROXY + client.endpoint + '/Users?count=10' : client.endpoint + '/Users?count=10',
-      headers: client.headers
-    },
-    response: users
-  });
+  
   const schema = findSchemaById(resource.schema);
-  if (users.ok && users.data && Array.isArray(users.data.Resources)) {
-    const createBtn = document.createElement('button');
-    createBtn.textContent = 'Create User';
-    createBtn.className = 'btn btn-primary';
-    mainPanel.appendChild(createBtn);
-    const userFormDiv = document.createElement('div');
-    mainPanel.appendChild(userFormDiv);
-    createBtn.onclick = () => {
-      renderUserForm(userFormDiv, async userData => {
-        showLoading(userFormDiv, 'Creating user...');
-        const result = await client.createUser(userData);
-        window.renderJSON(reqResPanel, {
-          request: {
-            method: 'POST',
-            url: client.useProxy ? LOCAL_CORS_PROXY + client.endpoint + '/Users' : client.endpoint + '/Users',
-            headers: client.headers,
-            body: userData
-          },
-          response: result
+  
+  // Create container for user list
+  const userListDiv = document.createElement('div');
+  mainPanel.appendChild(userListDiv);
+  const userDetailDiv = document.createElement('div');
+  mainPanel.appendChild(userDetailDiv);
+  
+  // Function to load and display users with filters
+  async function loadUsers(filterParams = { count: 10 }) {
+    showLoading(userListDiv, 'Loading users...');
+    
+    try {
+      const users = await client.getUsers(filterParams);
+      
+      // Update request/response panel
+      const url = client.useProxy ? LOCAL_CORS_PROXY + client.endpoint + '/Users' : client.endpoint + '/Users';
+      const queryString = Object.keys(filterParams).length > 0 ? '?' + new URLSearchParams(filterParams).toString() : '';
+      
+      window.renderJSON(reqResPanel, {
+        request: {
+          method: 'GET',
+          url: url + queryString,
+          headers: client.headers
+        },
+        response: users
+      });
+      
+      if (users.ok && users.data && Array.isArray(users.data.Resources)) {
+        renderUserList(userListDiv, users.data.Resources, (user, action = 'edit') => {
+          if (action === 'delete') {
+            // Handle delete action
+            showLoading(userDetailDiv, 'Deleting user...');
+            client.deleteUser(user.id).then(result => {
+              window.renderJSON(reqResPanel, {
+                request: {
+                  method: 'DELETE',
+                  url: client.useProxy ? LOCAL_CORS_PROXY + client.endpoint + `/Users/${user.id}` : client.endpoint + `/Users/${user.id}`,
+                  headers: client.headers
+                },
+                response: result
+              });
+              if (result.ok) {
+                userDetailDiv.innerHTML = '<div class="success-message">User deleted successfully.</div>';
+                loadUsers(); // Reload users after deletion
+              } else {
+                showError(userDetailDiv, `Error (${result.status}): ${JSON.stringify(result.data)}`);
+              }
+            });
+          } else {
+            // Handle edit action - modal handles its own display
+            renderUserEditForm(null, user, async updatedUser => {
+              const patchOps = [];
+              for (const key in updatedUser) {
+                if (key !== 'schemas' && key !== 'id' && updatedUser[key] !== user[key]) {
+                  patchOps.push({ op: 'replace', path: key, value: updatedUser[key] });
+                }
+              }
+              if (patchOps.length === 0) {
+                return { __req: null, __res: null };
+              }
+              const req = {
+                method: 'PATCH',
+                url: client.useProxy ? LOCAL_CORS_PROXY + client.endpoint + `/Users/${user.id}` : client.endpoint + `/Users/${user.id}`,
+                headers: client.headers,
+                body: patchOps
+              };
+              const result = await client.updateUser(user.id, patchOps);
+              window.renderJSON(reqResPanel, { request: req, response: result });
+              if (result.ok) {
+                await loadUsers(); // Reload users after update
+              }
+              return { __req: req, __res: result };
+            }, { schema });
+          }
+        }, { 
+          schema, 
+          client, 
+          onFilterChange: (newParams) => {
+            loadUsers(newParams);
+          }
         });
-        if (result.ok) {
-          userFormDiv.innerHTML = '<div class="success-message">User created successfully.</div>';
-          await renderUsersSection(mainPanel, client, resource);
-        } else {
-          showError(userFormDiv, `Error (${result.status}): ${JSON.stringify(result.data)}`);
-        }
-      }, { schema });
-    };
-    const userListDiv = document.createElement('div');
-    mainPanel.appendChild(userListDiv);
-    const userDetailDiv = document.createElement('div');
-    mainPanel.appendChild(userDetailDiv);
-    renderUserList(userListDiv, users.data.Resources, user => {
-      renderUserDetail(userDetailDiv, user, client, mainPanel, null, schema);
-    }, { schema });
-    if (users.data.Resources.length === 0) {
-      userListDiv.innerHTML = '<div>No users found.</div>';
+      } else {
+        showError(userListDiv, `Error (${users.status}): ${users.data}`);
+      }
+    } catch (error) {
+      showError(userListDiv, `Error loading users: ${error.message}`);
     }
-  } else {
-    showError(mainPanel, `Error (${users.status}): ${users.data}`);
   }
+  
+  // Initial load
+  await loadUsers();
+  
+  // Create user button handler - use modal
+  createBtn.onclick = () => {
+    renderUserCreateModal(null, async userData => {
+      const req = {
+        method: 'POST',
+        url: client.useProxy ? LOCAL_CORS_PROXY + client.endpoint + '/Users' : client.endpoint + '/Users',
+        headers: client.headers,
+        body: userData
+      };
+      const result = await client.createUser(userData);
+      window.renderJSON(reqResPanel, { request: req, response: result });
+      if (result.ok) {
+        await loadUsers(); // Reload users after creation
+      }
+      return { __req: req, __res: result };
+    }, { schema });
+  };
+  
+  // Quick search handler
+  searchInput.addEventListener('input', (e) => {
+    const searchTerm = e.target.value.trim();
+    if (searchTerm) {
+      loadUsers({ 
+        filter: `userName sw "${searchTerm}" or displayName sw "${searchTerm}" or name.givenName sw "${searchTerm}" or name.familyName sw "${searchTerm}" or emails.value sw "${searchTerm}"`,
+        count: 50
+      });
+    } else {
+      loadUsers({ count: 10 });
+    }
+  });
 }
 
 function renderUserDetail(container, user, client, mainPanel, reqResPanel, schema) {
@@ -1140,65 +1236,159 @@ async function renderGroupsSection(mainPanel, client, resource) {
   desc.textContent = 'View, create, edit, and delete groups. All actions show raw SCIM requests and responses.';
   desc.className = 'info-description';
   mainPanel.appendChild(desc);
+  
+  // Create action row with create button and search/filter controls
+  const actionRow = document.createElement('div');
+  actionRow.className = 'action-row';
+  mainPanel.appendChild(actionRow);
+  
+  // Create group button
+  const createBtn = document.createElement('button');
+  createBtn.textContent = 'Create Group';
+  createBtn.className = 'btn btn-primary';
+  actionRow.appendChild(createBtn);
+  
+  // Search box
+  const searchContainer = document.createElement('div');
+  searchContainer.className = 'search-container';
+  const searchLabel = document.createElement('label');
+  searchLabel.textContent = 'Quick Search:';
+  searchLabel.className = 'search-label';
+  const searchInput = document.createElement('input');
+  searchInput.type = 'text';
+  searchInput.placeholder = 'Search by display name, external ID...';
+  searchInput.className = 'form-control';
+  searchContainer.appendChild(searchLabel);
+  searchContainer.appendChild(searchInput);
+  actionRow.appendChild(searchContainer);
+  
   const reqResPanel = document.createElement('div');
   reqResPanel.className = 'reqres-panel-container';
   mainPanel.appendChild(reqResPanel);
-  showLoading(mainPanel, 'Loading groups...');
-  const groups = await client.getGroups({ count: 10 });
-  mainPanel.innerHTML = '';
-  mainPanel.appendChild(header);
-  mainPanel.appendChild(desc);
-  mainPanel.appendChild(reqResPanel);
-  window.renderJSON(reqResPanel, {
-    request: {
-      method: 'GET',
-      url: client.useProxy ? LOCAL_CORS_PROXY + client.endpoint + '/Groups?count=10' : client.endpoint + '/Groups?count=10',
-      headers: client.headers
-    },
-    response: groups
-  });
+  
   const schema = findSchemaById(resource.schema);
-  if (groups.ok && groups.data && Array.isArray(groups.data.Resources)) {
-    const createBtn = document.createElement('button');
-    createBtn.textContent = 'Create Group';
-    createBtn.className = 'btn btn-primary';
-    mainPanel.appendChild(createBtn);
-    const groupFormDiv = document.createElement('div');
-    mainPanel.appendChild(groupFormDiv);
-    createBtn.onclick = () => {
-      renderGroupForm(groupFormDiv, async groupData => {
-        showLoading(groupFormDiv, 'Creating group...');
-        const result = await client.createGroup(groupData);
-        window.renderJSON(reqResPanel, {
-          request: {
-            method: 'POST',
-            url: client.useProxy ? LOCAL_CORS_PROXY + client.endpoint + '/Groups' : client.endpoint + '/Groups',
-            headers: client.headers,
-            body: groupData
-          },
-          response: result
+  
+  // Create container for group list
+  const groupListDiv = document.createElement('div');
+  mainPanel.appendChild(groupListDiv);
+  const groupDetailDiv = document.createElement('div');
+  mainPanel.appendChild(groupDetailDiv);
+  
+  // Function to load and display groups with filters
+  async function loadGroups(filterParams = { count: 10 }) {
+    showLoading(groupListDiv, 'Loading groups...');
+    
+    try {
+      const groups = await client.getGroups(filterParams);
+      
+      // Update request/response panel
+      const url = client.useProxy ? LOCAL_CORS_PROXY + client.endpoint + '/Groups' : client.endpoint + '/Groups';
+      const queryString = Object.keys(filterParams).length > 0 ? '?' + new URLSearchParams(filterParams).toString() : '';
+      
+      window.renderJSON(reqResPanel, {
+        request: {
+          method: 'GET',
+          url: url + queryString,
+          headers: client.headers
+        },
+        response: groups
+      });
+      
+      if (groups.ok && groups.data && Array.isArray(groups.data.Resources)) {
+        renderGroupList(groupListDiv, groups.data.Resources, (group, action = 'edit') => {
+          if (action === 'delete') {
+            // Handle delete action
+            showLoading(groupDetailDiv, 'Deleting group...');
+            client.deleteGroup(group.id).then(result => {
+              window.renderJSON(reqResPanel, {
+                request: {
+                  method: 'DELETE',
+                  url: client.useProxy ? LOCAL_CORS_PROXY + client.endpoint + `/Groups/${group.id}` : client.endpoint + `/Groups/${group.id}`,
+                  headers: client.headers
+                },
+                response: result
+              });
+              if (result.ok) {
+                groupDetailDiv.innerHTML = '<div class="success-message">Group deleted successfully.</div>';
+                loadGroups(); // Reload groups after deletion
+              } else {
+                showError(groupDetailDiv, `Error (${result.status}): ${JSON.stringify(result.data)}`);
+              }
+            });
+          } else {
+            // Handle edit action - modal handles its own display
+            renderGroupEditForm(null, group, async updatedGroup => {
+              const patchOps = [];
+              for (const key in updatedGroup) {
+                if (key !== 'schemas' && key !== 'id' && updatedGroup[key] !== group[key]) {
+                  patchOps.push({ op: 'replace', path: key, value: updatedGroup[key] });
+                }
+              }
+              if (patchOps.length === 0) {
+                return { __req: null, __res: null };
+              }
+              const req = {
+                method: 'PATCH',
+                url: client.useProxy ? LOCAL_CORS_PROXY + client.endpoint + `/Groups/${group.id}` : client.endpoint + `/Groups/${group.id}`,
+                headers: client.headers,
+                body: patchOps
+              };
+              const result = await client.updateGroup(group.id, patchOps);
+              window.renderJSON(reqResPanel, { request: req, response: result });
+              if (result.ok) {
+                await loadGroups(); // Reload groups after update
+              }
+              return { __req: req, __res: result };
+            }, { schema });
+          }
+        }, { 
+          schema, 
+          client, 
+          onFilterChange: (newParams) => {
+            loadGroups(newParams);
+          }
         });
-        if (result.ok) {
-          groupFormDiv.innerHTML = '<div class="success-message">Group created successfully.</div>';
-          await renderGroupsSection(mainPanel, client, resource);
-        } else {
-          showError(groupFormDiv, `Error (${result.status}): ${JSON.stringify(result.data)}`);
-        }
-      }, { schema });
-    };
-    const groupListDiv = document.createElement('div');
-    mainPanel.appendChild(groupListDiv);
-    const groupDetailDiv = document.createElement('div');
-    mainPanel.appendChild(groupDetailDiv);
-    renderGroupList(groupListDiv, groups.data.Resources, group => {
-      renderGroupDetail(groupDetailDiv, group, client, mainPanel, null, schema);
-    }, { schema });
-    if (groups.data.Resources.length === 0) {
-      groupListDiv.innerHTML = '<div>No groups found.</div>';
+      } else {
+        showError(groupListDiv, `Error (${groups.status}): ${groups.data}`);
+      }
+    } catch (error) {
+      showError(groupListDiv, `Error loading groups: ${error.message}`);
     }
-  } else {
-    showError(mainPanel, `Error (${groups.status}): ${groups.data}`);
   }
+  
+  // Initial load
+  await loadGroups();
+  
+  // Create group button handler - use modal
+  createBtn.onclick = () => {
+    renderGroupCreateModal(null, async groupData => {
+      const req = {
+        method: 'POST',
+        url: client.useProxy ? LOCAL_CORS_PROXY + client.endpoint + '/Groups' : client.endpoint + '/Groups',
+        headers: client.headers,
+        body: groupData
+      };
+      const result = await client.createGroup(groupData);
+      window.renderJSON(reqResPanel, { request: req, response: result });
+      if (result.ok) {
+        await loadGroups(); // Reload groups after creation
+      }
+      return { __req: req, __res: result };
+    }, { schema });
+  };
+  
+  // Quick search handler
+  searchInput.addEventListener('input', (e) => {
+    const searchTerm = e.target.value.trim();
+    if (searchTerm) {
+      loadGroups({ 
+        filter: `displayName sw "${searchTerm}" or externalId sw "${searchTerm}"`,
+        count: 50
+      });
+    } else {
+      loadGroups({ count: 10 });
+    }
+  });
 }
 
 function renderGroupDetail(container, group, client, mainPanel, reqResPanel, schema) {
@@ -1216,8 +1406,7 @@ function renderGroupDetail(container, group, client, mainPanel, reqResPanel, sch
   btnRow.appendChild(deleteBtn);
   container.appendChild(btnRow);
   editBtn.onclick = () => {
-    renderGroupEditForm(container, group, async updatedGroup => {
-      showLoading(container, 'Updating group...');
+    renderGroupEditForm(null, group, async updatedGroup => {
       const patchOps = [];
       for (const key in updatedGroup) {
         if (key !== 'schemas' && key !== 'id' && updatedGroup[key] !== group[key]) {
@@ -1225,8 +1414,6 @@ function renderGroupDetail(container, group, client, mainPanel, reqResPanel, sch
         }
       }
       if (patchOps.length === 0) {
-        container.innerHTML = '<div class="success-message">No changes to update.</div>';
-        renderGroupDetail(container, group, client, mainPanel, reqResPanel, schema);
         return { __req: null, __res: null };
       }
       const req = {
@@ -1238,10 +1425,7 @@ function renderGroupDetail(container, group, client, mainPanel, reqResPanel, sch
       const result = await client.updateGroup(group.id, patchOps);
       window.renderJSON(reqResPanel, { request: req, response: result });
       if (result.ok) {
-        container.innerHTML = '<div class="success-message">Group updated successfully.</div>';
         await renderGroupsSection(mainPanel, client, { schema: schema.id });
-      } else {
-        showError(container, `Error (${result.status}): ${JSON.stringify(result.data)}`);
       }
       return { __req: req, __res: result };
     }, { schema });
