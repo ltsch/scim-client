@@ -1,148 +1,459 @@
-// js/group-create-modal.js
+// js/group-create-modal.js - Refactored Group Create Modal
 
-import { renderJSON } from './ui-components.js';
+import { RESOURCE_CONFIG, UI_CONFIG, FORM_CONFIG } from './config.js';
+import {
+  validateElement,
+  validateRequired,
+  validateFunction,
+  escapeHTML,
+  createElement,
+  addEventListener,
+  clearElement,
+  parseError,
+  safeAsync,
+  handleMissingSchema
+} from './utils.js';
+import { renderJSON, showError, showSuccess } from './ui-components.js';
 
-const SYSTEM_FIELDS = ['id', 'externalId', 'meta', 'password', 'schemas', 'scimGatewayData', 'members'];
+// ============================================================================
+// SCHEMA ATTRIBUTE PROCESSOR
+// ============================================================================
 
-function getSchemaAttributes(schema) {
-  if (!schema || !Array.isArray(schema.attributes)) return [];
-  return schema.attributes.filter(attr => !attr.readOnly && attr.mutability !== 'readOnly' && !SYSTEM_FIELDS.includes(attr.name));
+/**
+ * Process schema attributes for group create modal
+ */
+class GroupCreateSchemaAttributeProcessor {
+  /**
+   * Get editable attributes from schema
+   * @param {Object} schema - Schema object
+   * @returns {Array} Editable attributes
+   */
+  static getEditableAttributes(schema) {
+    if (!schema || !Array.isArray(schema.attributes)) return [];
+    
+    return schema.attributes.filter(attr => {
+      // Skip system fields
+      if (FORM_CONFIG.SYSTEM_FIELDS.includes(attr.name)) return false;
+      if (attr.name === 'schemas') return false;
+      
+
+      
+      // Include fields that are not explicitly read-only
+      if (attr.readOnly === true) return false;
+      if (attr.mutability === 'readOnly') return false;
+      
+      // Exclude complex object types that should be rendered as JSON
+      if (attr.type === 'complex' || attr.type === 'object') return false;
+      if (attr.multiValued && attr.type !== 'string') return false;
+      
+      // Include supported types
+      return FORM_CONFIG.SUPPORTED_TYPES.includes(attr.type);
+    });
+  }
 }
 
-export function renderGroupCreateModal(container, onSubmit, options = {}) {
-  const { schema } = options;
-  const attributes = getSchemaAttributes(schema);
+// ============================================================================
+// FORM FIELD RENDERER
+// ============================================================================
+
+/**
+ * Render form fields for group create modal
+ */
+class GroupCreateFormFieldRenderer {
+  /**
+   * Render text field
+   * @param {Object} attr - Field attribute
+   * @returns {string} HTML for text field
+   */
+  static renderTextField(attr) {
+    const required = attr.required ? 'required' : '';
+    const label = attr.name + (attr.required ? ' *' : '');
+    
+    return `
+      <div class="${UI_CONFIG.CLASSES.FORM_GROUP}">
+        <label for="${attr.name}" class="${UI_CONFIG.CLASSES.FORM_LABEL}">${escapeHTML(label)}</label>
+        <input type="text" id="${attr.name}" class="${UI_CONFIG.CLASSES.FORM_CONTROL}" ${required}>
+      </div>
+    `;
+  }
   
-  // Create modal overlay
-  const modalOverlay = document.createElement('div');
-  modalOverlay.className = 'modal-overlay';
+  /**
+   * Render number field
+   * @param {Object} attr - Field attribute
+   * @returns {string} HTML for number field
+   */
+  static renderNumberField(attr) {
+    const required = attr.required ? 'required' : '';
+    const label = attr.name + (attr.required ? ' *' : '');
+    
+    return `
+      <div class="${UI_CONFIG.CLASSES.FORM_GROUP}">
+        <label for="${attr.name}" class="${UI_CONFIG.CLASSES.FORM_LABEL}">${escapeHTML(label)}</label>
+        <input type="number" id="${attr.name}" class="${UI_CONFIG.CLASSES.FORM_CONTROL}" ${required}>
+      </div>
+    `;
+  }
   
-  // Create modal container
-  const modalContainer = document.createElement('div');
-  modalContainer.className = 'modal-container';
+  /**
+   * Render checkbox field
+   * @param {Object} attr - Field attribute
+   * @returns {string} HTML for checkbox field
+   */
+  static renderCheckboxField(attr) {
+    const required = attr.required ? 'required' : '';
+    const label = attr.name + (attr.required ? ' *' : '');
+    
+    return `
+      <div class="${UI_CONFIG.CLASSES.FORM_GROUP}">
+        <label class="${UI_CONFIG.CLASSES.FORM_LABEL} ${UI_CONFIG.CLASSES.FORM_CHECKBOX_LABEL}">
+          <input type="checkbox" id="${attr.name}" class="${UI_CONFIG.CLASSES.FORM_CHECKBOX}" ${required}>
+          <span class="${UI_CONFIG.CLASSES.FORM_CHECKBOX_TEXT}">${escapeHTML(label)}</span>
+        </label>
+      </div>
+    `;
+  }
   
-  // Create modal content
-  modalContainer.innerHTML = `
-    <div class="modal-header">
-      <h2>Create Group</h2>
-      <button class="modal-close" onclick="this.closest('.modal-overlay').remove()">&times;</button>
-    </div>
-    <div class="modal-body">
-      <form id="group-create-form" class="user-form">
-        ${attributes.map(attr => {
-          const required = attr.required ? 'required' : '';
-          const label = attr.name + (attr.required ? ' *' : '');
-          let inputType = 'text';
-          if (typeof attr.type === 'object' || attr.multiValued || attr.type === 'complex') {
-            // Hide object/array/complex fields from create form
-            return '';
-          }
-          if (attr.type === 'boolean') inputType = 'checkbox';
-          if (attr.type === 'integer' || attr.type === 'decimal') inputType = 'number';
-          return `<label>${label}<br><input type="${inputType}" id="${attr.name}" ${required}></label>`;
-        }).join('')}
-        <div id="group-create-form-error" class="form-error"></div>
-      </form>
-      <div id="group-create-reqres-panel"></div>
-    </div>
-    <div class="modal-footer">
-      <button type="button" class="btn btn-secondary" onclick="this.closest('.modal-overlay').remove()">Cancel</button>
-      <button type="submit" form="group-create-form" class="btn btn-primary">Create Group</button>
-    </div>
-  `;
+  /**
+   * Render multi-valued field
+   * @param {Object} attr - Field attribute
+   * @returns {string} HTML for multi-valued field
+   */
+  static renderMultiValuedField(attr) {
+    const required = attr.required ? 'required' : '';
+    const label = attr.name + (attr.required ? ' *' : '');
+    
+    return `
+      <div class="${UI_CONFIG.CLASSES.FORM_GROUP}">
+        <label for="${attr.name}" class="${UI_CONFIG.CLASSES.FORM_LABEL}">${escapeHTML(label)}</label>
+        <input type="text" id="${attr.name}" class="${UI_CONFIG.CLASSES.FORM_CONTROL}" ${required}>
+        <small>Separate multiple values with commas</small>
+      </div>
+    `;
+  }
   
-  // Append modal to body
-  modalOverlay.appendChild(modalContainer);
-  document.body.appendChild(modalOverlay);
-  
-  const form = modalContainer.querySelector('#group-create-form');
-  const reqresPanel = modalContainer.querySelector('#group-create-reqres-panel');
-  
-  function showReqResAccordion(req, res) {
-    reqresPanel.innerHTML = '';
-    const accordion = document.createElement('div');
-    accordion.className = 'reqres-accordion';
-    const toggleBtn = document.createElement('button');
-    toggleBtn.textContent = 'Show Raw Request/Response';
-    toggleBtn.className = 'reqres-toggle-btn';
-    const panel = document.createElement('div');
-    panel.className = 'reqres-panel';
+  /**
+   * Render field based on type
+   * @param {Object} attr - Field attribute
+   * @returns {string} HTML for field
+   */
+  static renderField(attr) {
+    if (attr.multiValued) {
+      return this.renderMultiValuedField(attr);
+    }
+    
+    switch (attr.type) {
+      case 'boolean':
+        return this.renderCheckboxField(attr);
+      case 'integer':
+      case 'decimal':
+        return this.renderNumberField(attr);
+      case 'string':
+      default:
+        return this.renderTextField(attr);
+    }
+  }
+}
+
+// ============================================================================
+// REQUEST/RESPONSE ACCORDION
+// ============================================================================
+
+/**
+ * Create request/response accordion
+ */
+class ReqResAccordion {
+  /**
+   * Create accordion for request/response display
+   * @param {Object} req - Request data
+   * @param {Object} res - Response data
+   * @param {HTMLElement} container - Container element
+   */
+  static create(req, res, container) {
+    clearElement(container);
+    
+    const accordion = createElement('div', {
+      className: UI_CONFIG.CLASSES.REQRES_ACCORDION
+    });
+    
+    const toggleBtn = createElement('button', {
+      className: UI_CONFIG.CLASSES.REQRES_TOGGLE_BTN,
+      textContent: 'Show Raw Request/Response'
+    });
+    
+    const panel = createElement('div', {
+      className: UI_CONFIG.CLASSES.REQRES_PANEL
+    });
+    
     accordion.appendChild(toggleBtn);
     accordion.appendChild(panel);
-    toggleBtn.onclick = () => {
+    
+    addEventListener(toggleBtn, 'click', () => {
       if (panel.classList.contains('hidden')) {
         panel.classList.remove('hidden');
         toggleBtn.textContent = 'Hide Raw Request/Response';
-        panel.innerHTML = `<pre class="json-viewer">${escapeHTML(typeof req === 'object' ? JSON.stringify(req, null, 2) : String(req))}\n\n${escapeHTML(typeof res === 'object' ? JSON.stringify(res, null, 2) : String(res))}</pre>`;
+        clearElement(panel);
+        renderJSON(panel, { request: req, response: res });
       } else {
         panel.classList.add('hidden');
         toggleBtn.textContent = 'Show Raw Request/Response';
       }
-    };
-    reqresPanel.appendChild(accordion);
+    });
+    
+    container.appendChild(accordion);
   }
+}
 
-  function escapeHTML(str) {
-    return String(str).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;','\'':'&#39;'}[c]));
+// ============================================================================
+// GROUP CREATE MODAL RENDERER
+// ============================================================================
+
+/**
+ * Group create modal renderer
+ */
+class GroupCreateModalRenderer {
+  /**
+   * Create group create modal renderer
+   * @param {HTMLElement} container - Container element
+   * @param {Function} onSubmit - Submit callback
+   * @param {Object} options - Component options
+   */
+  constructor(container, onSubmit, options = {}) {
+    this.container = container;
+    this.onSubmit = onSubmit;
+    this.options = options;
+    
+    // Handle missing schema with fallback and warning
+    this.schema = handleMissingSchema(options.schema, 'Group', this.container);
+    
+    this.attributes = GroupCreateSchemaAttributeProcessor.getEditableAttributes(this.schema);
+    this.modalOverlay = null;
+    this.modalContainer = null;
+    this.form = null;
+    this.reqresPanel = null;
+    
+    this.validate();
+    this.render();
+    this.bindEvents();
   }
   
-  // Handle form submission
-  form.onsubmit = async (e) => {
-    e.preventDefault();
-    const errorDiv = form.querySelector('#group-create-form-error');
-    const groupData = { schemas: [schema.id] };
-    let hasError = false;
+  /**
+   * Validate component configuration
+   * @throws {Error} If validation fails
+   */
+  validate() {
+    validateElement(this.container, 'container');
+    validateFunction(this.onSubmit, 'onSubmit');
     
-    attributes.forEach(attr => {
-      const input = form[attr.name];
-      if (!input) return; // Skip attributes with no input (e.g., objects/arrays)
-      let value = input.value;
-      if (attr.type === 'boolean') value = input.checked;
-      if (attr.multiValued && attr.type === 'string') {
-        value = value.split(',').map(s => s.trim()).filter(Boolean);
-      }
-      if (attr.required && (!value || (Array.isArray(value) && value.length === 0))) {
-        hasError = true;
-      }
-      if (value && (!Array.isArray(value) || value.length > 0)) {
-        groupData[attr.name] = value;
+    // Schema validation is now handled in constructor with fallback
+  }
+  
+  /**
+   * Render the modal
+   */
+  render() {
+    this.createModal();
+    this.renderFormFields();
+  }
+  
+  /**
+   * Create modal structure
+   */
+  createModal() {
+    this.modalOverlay = createElement('div', {
+      className: UI_CONFIG.CLASSES.MODAL_OVERLAY
+    });
+    
+    this.modalContainer = createElement('div', {
+      className: UI_CONFIG.CLASSES.MODAL_CONTAINER
+    });
+    
+    const header = createElement('div', {
+      className: UI_CONFIG.CLASSES.MODAL_HEADER
+    });
+    
+    const title = createElement('h2', {
+      textContent: 'Create Group'
+    });
+    
+    const closeBtn = createElement('button', {
+      className: UI_CONFIG.CLASSES.MODAL_CLOSE,
+      textContent: '×'
+    });
+    
+    header.appendChild(title);
+    header.appendChild(closeBtn);
+    
+    const body = createElement('div', {
+      className: UI_CONFIG.CLASSES.MODAL_BODY
+    });
+    
+    this.form = createElement('form', {
+      id: 'group-create-form',
+      className: UI_CONFIG.CLASSES.FORM
+    });
+    
+    body.appendChild(this.form);
+    
+    // Create request/response panel
+    this.reqresPanel = createElement('div', {
+      id: 'group-create-reqres-panel'
+    });
+    body.appendChild(this.reqresPanel);
+    
+    const footer = createElement('div', {
+      className: UI_CONFIG.CLASSES.MODAL_FOOTER
+    });
+    
+    const submitBtn = createElement('button', {
+      type: 'submit',
+      className: `${UI_CONFIG.CLASSES.BTN} ${UI_CONFIG.CLASSES.BTN_PRIMARY}`,
+      textContent: 'Create Group'
+    });
+    
+    const cancelBtn = createElement('button', {
+      type: 'button',
+      className: `${UI_CONFIG.CLASSES.BTN} ${UI_CONFIG.CLASSES.BTN_SECONDARY}`,
+      textContent: 'Cancel'
+    });
+    
+    footer.appendChild(submitBtn);
+    footer.appendChild(cancelBtn);
+    
+    this.modalContainer.appendChild(header);
+    this.modalContainer.appendChild(body);
+    this.modalContainer.appendChild(footer);
+    this.modalOverlay.appendChild(this.modalContainer);
+    document.body.appendChild(this.modalOverlay);
+  }
+  
+  /**
+   * Render form fields
+   */
+  renderFormFields() {
+    this.attributes.forEach(attr => {
+      const fieldHTML = GroupCreateFormFieldRenderer.renderField(attr);
+      const tempDiv = createElement('div');
+      tempDiv.innerHTML = fieldHTML;
+      this.form.appendChild(tempDiv.firstElementChild);
+    });
+  }
+  
+  /**
+   * Bind form events
+   */
+  bindEvents() {
+    // Form submission
+    addEventListener(this.form, 'submit', (e) => {
+      e.preventDefault();
+      this.handleSubmit();
+    });
+    
+    // Close button
+    const closeBtn = this.modalOverlay.querySelector(`.${UI_CONFIG.CLASSES.MODAL_CLOSE}`);
+    addEventListener(closeBtn, 'click', () => {
+      this.close();
+    });
+    
+    // Cancel button
+    const cancelBtn = this.modalOverlay.querySelector('.modal-footer button:last-child');
+    addEventListener(cancelBtn, 'click', () => {
+      this.close();
+    });
+    
+    // Close on overlay click
+    addEventListener(this.modalOverlay, 'click', (event) => {
+      if (event.target === this.modalOverlay) {
+        this.close();
       }
     });
     
-    if (hasError) {
-      errorDiv.textContent = 'All required fields must be filled.';
-      return;
+    // Close on escape key
+    const handleEscape = (event) => {
+      if (event.key === 'Escape') {
+        this.close();
+        document.removeEventListener('keydown', handleEscape);
+      }
+    };
+    document.addEventListener('keydown', handleEscape);
+  }
+  
+  /**
+   * Close the modal
+   */
+  close() {
+    if (this.modalOverlay && this.modalOverlay.parentNode) {
+      this.modalOverlay.parentNode.removeChild(this.modalOverlay);
     }
-    
-    errorDiv.textContent = '';
-    
-    try {
-      const result = await onSubmit(groupData);
+  }
+  
+  /**
+   * Handle form submission
+   */
+  async handleSubmit() {
+    return await safeAsync(async () => {
+      const groupData = { schemas: [this.schema.id] };
+      const errors = [];
+      
+      // Collect form data
+      this.attributes.forEach(attr => {
+        const field = this.form.querySelector(`#${attr.name}`);
+        if (!field) return;
+        
+        let value = field.type === 'checkbox' ? field.checked : field.value;
+        
+        // Handle multi-valued fields
+        if (attr.multiValued && typeof value === 'string') {
+          value = value.split(',').map(v => v.trim()).filter(v => v);
+        }
+        
+        // Validate required fields
+        if (attr.required && (!value || (Array.isArray(value) && value.length === 0))) {
+          errors.push(`${attr.name} is required`);
+        }
+        
+        // Add non-empty values to group data
+        if (value && (!Array.isArray(value) || value.length > 0)) {
+          groupData[attr.name] = value;
+        }
+      });
+      
+      // Show validation errors
+      if (errors.length > 0) {
+        await showError(this.form, errors.join('; '));
+        return;
+      }
+      
+      // Submit form
+      const result = await this.onSubmit(groupData);
+      
+      // Show request/response if available
       if (result && result.__req && result.__res) {
-        showReqResAccordion(result.__req, result.__res);
+        ReqResAccordion.create(result.__req, result.__res, this.reqresPanel);
       }
-      // Close modal on successful submission
-      if (result && result.__res && result.__res.ok) {
-        modalOverlay.remove();
-      }
-    } catch (error) {
-      errorDiv.textContent = `Error: ${error.message}`;
-    }
-  };
-  
-  // Close modal when clicking outside
-  modalOverlay.addEventListener('click', (e) => {
-    if (e.target === modalOverlay) {
-      modalOverlay.remove();
-    }
-  });
-  
-  // Close modal on Escape key
-  const handleEscape = (e) => {
-    if (e.key === 'Escape') {
-      modalOverlay.remove();
-      document.removeEventListener('keydown', handleEscape);
-    }
-  };
-  document.addEventListener('keydown', handleEscape);
+      
+      // Show success message
+      showSuccess(this.container, 'Group created successfully!');
+      
+      // Close modal
+      this.close();
+      
+    }, async (error) => {
+      const parsedError = parseError(error);
+      await showError(this.form, parsedError);
+    });
+  }
+}
+
+// ============================================================================
+// MAIN EXPORT FUNCTION
+// ============================================================================
+
+/**
+ * Render group create modal
+ * @param {HTMLElement} container - Container element
+ * @param {Function} onSubmit - Submit callback
+ * @param {Object} options - Modal options
+ */
+export function renderGroupCreateModal(container, onSubmit, options = {}) {
+  return new GroupCreateModalRenderer(container, onSubmit, options);
 } 

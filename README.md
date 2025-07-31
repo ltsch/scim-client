@@ -1,472 +1,336 @@
-# SCIM Client Test Harness
+# SCIM Client - Unified Component Architecture
 
-A comprehensive web-based developer tool for testing and debugging SCIM (System for Cross-domain Identity Management) servers. This project provides a modern, functionality-first UI for exploring, validating, and manipulating SCIM endpoints with full SCIM 2.0 compliance.
+A modern, maintainable SCIM 2.0 client for testing and development with a unified component system.
 
----
+## What This Is
 
-## 🚀 Quick Start
+- **Unified Architecture**: Centralized configuration and shared utilities
+- **Component System**: Reusable UI components with consistent patterns
+- **SCIM 2.0 Compliant**: Full support for RFC 7643/7644 specifications
+- **Developer Focused**: Clean, maintainable code for SCIM testing and development
 
-### Automated Setup (Recommended)
-```bash
-cd ~/scim-client
-./test-setup.sh
+## Features
+
+- **User Management**: View, filter, search, create, edit, delete users
+- **Group Management**: View, search, create, edit, delete groups  
+- **Role Management**: View, search, create, edit, delete roles
+- **Entitlement Management**: View, edit, delete entitlements
+- **Server Configuration**: View SCIM server capabilities and schemas
+- **Settings Management**: Configure SCIM endpoint, API key, and CORS proxy
+- **Request/Response Logging**: Comprehensive HTTP request/response logging with performance metrics
+- **Enhanced Error Handling**: SCIM-specific error parsing with RFC context and actionable guidance
+- **Developer Tools**: Raw request/response viewing, performance statistics, and debugging information
+
+## Architecture
+
+### Unified Component System
+- **Centralized Configuration**: Single source of truth for all settings (`config.js`)
+- **Shared Utilities**: Common functionality centralized (`utils.js`)
+- **Component Framework**: Reusable base classes and patterns (`components.js`)
+- **Consistent UI**: Unified styling and behavior across all components
+
+### Modular Design
+- **Base Components**: `BaseListComponent`, `ModalManager`, `FormFieldRenderer`
+- **Resource-Specific Components**: Specialized components for each SCIM resource type
+- **Shared Utilities**: DOM manipulation, validation, error handling, storage
+- **Configuration-Driven**: Components adapt to server schemas automatically
+
+### SCIM Compliance
+- **Server-Assigned IDs**: Properly handles immutable server-assigned identifiers
+- **Mutability Requirements**: Respects schema mutability specifications
+- **RFC 7643/7644**: Full compliance with SCIM 2.0 specifications
+- **Error Handling**: Comprehensive error parsing with RFC context
+
+## Getting Started
+
+1. **Start the container**:
+   ```bash
+   docker-compose up -d
+   ```
+
+2. **Visit the app**:
+   ```
+   http://localhost:8001
+   ```
+
+3. **Configure SCIM endpoint**:
+   - Go to Settings
+   - Enter your SCIM endpoint URL
+   - Enter your API key
+   - Enable CORS proxy if needed
+   - Save settings
+
+## CORS Proxy Configuration
+
+The application includes a built-in CORS proxy for development and testing:
+
+### How It Works
+- **Nginx Configuration**: Routes `/proxy/` requests to Python proxy
+- **Python Proxy**: Validates and forwards HTTPS requests with CORS headers
+- **Security**: Only accepts HTTPS URLs with proper validation
+
+### Configuration
+```nginx
+# nginx.conf - CORS proxy routing
+location /proxy/ {
+    proxy_pass http://127.0.0.1:8002$request_uri;
+    # ... headers and timeouts
+}
 ```
 
-This script will:
-- Start the SCIM server on port 7001
-- Start the SCIM client on port 8001
-- Generate test data
-- Provide you with testing URLs and credentials
-
-### Manual Setup
-```bash
-# Terminal 1: Start SCIM Server
-cd ~/scim-server
-source .venv/bin/activate
-python run_server.py
-
-# Terminal 2: Start SCIM Client (Docker)
-cd ~/scim-client
-docker compose up --build -d
-
-# Terminal 3: Generate Test Data
-cd ~/scim-server
-./generate_test_data.sh
-```
-
-### Docker Setup (Recommended)
-```bash
-# Build and start the SCIM client with nginx
-cd ~/scim-client
-docker compose up --build -d
-
-# The client will be available at http://localhost:8001
-# The CORS proxy is integrated and available at http://localhost:8001/proxy/
-```
-
-### Test Configuration
-- **Endpoint**: `http://localhost:7001/scim-identifier/test-hr-server/scim/v2`
-- **API Key**: `api-key-12345`
-- **Client URL**: `http://localhost:8001`
-
----
-
-## ✨ Features
-
-### Core SCIM 2.0 Support
-- **Dynamic Endpoint Discovery** - Auto-discovers available resource types and schemas
-- **Full CRUD Operations** - Create, read, update, delete for all resource types
-- **Schema Validation** - Client-side validation using server schemas
-- **RFC 7642, 7643, 7644 Compliance** - Complete SCIM 2.0 standards support
-
-### Supported Resource Types
-- **Users** - User management with full CRUD operations
-- **Groups** - Group management with member relationships
-- **Entitlements** - Entitlement management (licenses, permissions, etc.)
-- **Roles** - Role-based access control management
-- **ResourceTypes** - Discovery of available resource types
-- **Schemas** - Schema discovery and validation
-
-### Modern UI/UX
-- **Card-Based Layout** - Modern resource cards with hover effects
-- **Responsive Design** - Works on desktop, tablet, and mobile
-- **Interactive JSON Viewer** - Pretty-printed request/response logging
-- **Real-Time Validation** - Form validation with helpful error messages
-- **Loading States** - Proper loading indicators and error states
-
-### Developer Tools
-- **Raw Request/Response Views** - True raw JSON for debugging
-- **Detailed Error Messages** - Verbose, developer-focused error reporting
-- **CORS Proxy** - Built-in proxy for local development
-- **Local Storage** - Configuration persistence in browser
-- **Deep Linking** - SPA routing with bookmarkable URLs
-
----
-
-## 🧪 Testing
-
-### Quick Testing
-```bash
-# Run all tests
-./test.sh
-
-# API tests only
-./test.sh api
-
-# Browser tests only
-./test.sh browser
-
-# Setup environment only
-./test.sh setup
-```
-
-### Automated Testing with Playwright
-```bash
-# Install dependencies
-npm install
-npx playwright install
-
-# Run tests
-npm test                    # All tests
-npm run test:headed        # With browser visible
-npm run test:debug         # Debug mode
-npm run test:ui            # Playwright UI
-npm run test:report        # View test report
-```
-
-### Manual Testing
-1. Open `http://localhost:8001` in your browser
-2. Configure the client with the test endpoint and API key
-3. Test each resource type:
-   - Navigate between Users, Groups, Entitlements, Roles
-   - Create, edit, and delete resources
-   - Check request/response panels
-   - Verify form validation
-
-### Test Scenarios Covered
-- ✅ Dynamic endpoint discovery
-- ✅ All CRUD operations for each resource type
-- ✅ Form validation and error handling
-- ✅ Mobile responsiveness
-- ✅ Cross-browser compatibility
-- ✅ Performance under load
-
----
-
-## 🏗️ Project Structure
-
-```
-scim-client/
-├── js/                    # JavaScript components
-│   ├── scim-client.js     # Core SCIM client logic
-│   ├── app.js            # Main application controller
-│   ├── entitlement-*.js  # Entitlement management
-│   └── role-*.js         # Role management
-├── css/                   # Stylesheets
-│   ├── main.css          # Global layout and typography
-│   ├── components.css    # Unified UI components
-│   └── accessibility.css # Accessibility and focus states
-├── vendor/               # Third-party libraries
-│   └── jquery-jsonview/  # JSON viewer
-├── tests/                # Test files
-│   └── e2e.spec.js      # Playwright tests
-├── *.sh                  # Testing and setup scripts
-├── *.md                  # Documentation (consolidated here)
-└── index.html           # Main application
-```
-
----
-
-## 🎨 CSS Architecture
-
-### Unified Design System
-The CSS has been unified to reduce complexity and eliminate redundant styles across all components. This consolidation ensures consistent styling patterns and improved maintainability.
-
-#### Key Unified Components
-
-**Data Tables (`.data-table`)**
-- Single unified class for all data displays (Users, Groups, Entitlements, Roles)
-- Consistent styling, hover effects, and accessibility features
-- Legacy compatibility maintained for existing class names
-
-**Button System (`.btn`)**
-- Unified button styles with variants: `.btn-primary`, `.btn-secondary`, `.btn-danger`, `.btn-sm`
-- Consistent focus states and accessibility features
-- Single source of truth for all button interactions
-
-**Form System (`.form-container`)**
-- Unified form layout and styling across all resource types
-- Consistent validation states and error handling
-- Standardized form controls and spacing
-
-**Resource Cards (`.resource-card`)**
-- Unified card patterns for all resource displays
-- Consistent hover effects and interactions
-- Standardized spacing and typography
-
-#### Benefits Achieved
-- **Reduced Complexity**: Eliminated redundant styles and consolidated patterns
-- **Improved Maintainability**: Single source of truth for common components
-- **Enhanced Consistency**: All components follow unified design patterns
-- **Better Performance**: Reduced CSS file size and more efficient selectors
-- **Future-Proof**: Easy to extend and maintain design system
-
-#### Legacy Compatibility
-All existing class names continue to work for backward compatibility:
-- `.user-list-table` → inherits from `.data-table`
-- `.user-form` → inherits from `.form-container`
-- All existing button classes remain functional
-
----
-
-## 🔧 Development Setup
-
-### Prerequisites
-
-#### Python (for CORS proxy)
-- Python 3.x
-- `requests` (see `requirements.txt`)
-
-#### Node.js (for testing)
-- Node.js 16+
-- Playwright for browser testing
-
-### Installation
-```bash
-# Install Python requirements
-pip install -r requirements.txt
-
-# Install Node.js requirements
-npm install
-
-# Install Playwright browsers
-npx playwright install
-
-# Copy environment template
-cp env.example .env
-# Edit .env with your SCIM endpoint and API key
-```
-
-### Development Workflow
-1. Make changes to the client
-2. Run `npm test` to verify functionality
-3. Run `./run-api-tests.sh` to verify API compatibility
-4. Test manually in browser for UI/UX
-5. Commit changes
-
-### Starting the CORS Proxy
-For local development, you may need to start the CORS proxy:
-
-```bash
-# Option 1: Use the startup script
-./start-cors-proxy.sh
-
-# Option 2: Run directly
-python3 simple-cors-proxy.py
-```
-
-The CORS proxy will run on `http://localhost:8001/proxy/` and can be enabled in the client configuration.
-
----
-
-## 🐳 Docker Setup
-
-### Quick Start with Docker
-```bash
-# Build and start the services
-docker-compose up -d
-
-# View logs
-docker-compose logs -f
-
-# Stop services
-docker-compose down
-```
-
-### Docker Services
-
-#### SCIM Client (Port 8001)
-The main web application with full SCIM testing capabilities.
-
-```bash
-# Build and run just the client
-docker-compose up scim-client
-
-# Access the application
-open http://localhost:8001
-```
-
-#### CORS Proxy (Port 8002)
-Optional CORS proxy service for development and testing.
-
-```bash
-# Start the CORS proxy
-docker-compose up cors-proxy
-
-# Use in client configuration
-# Proxy URL: http://localhost:8002
-```
-
-### Environment Configuration
-Create a `.env` file in the project root:
-
-```bash
-# Copy the template
-cp .env.example .env
-
-# Edit with your values
-SCIM_ENDPOINT=https://your-scim-server.example.com/scim/v2
-SCIM_API_KEY=your-api-key-here
-CORS_PROXY_PORT=8002
-```
-
-### Docker Development
-```bash
-# Build with no cache (for dependency updates)
-docker-compose build --no-cache
-
-# Run in development mode with volume mounts
-docker-compose up -d
-
-# Execute commands in running container
-docker-compose exec scim-client npm test
-docker-compose exec scim-client npx playwright test
-
-# View container logs
-docker-compose logs scim-client
-```
-
-### Production Deployment
-```bash
-# Build optimized image
-docker build -t scim-client:latest .
-
-# Run with environment variables
-docker run -d \
-  -p 8001:8001 \
-  -e SCIM_ENDPOINT=https://your-server.com/scim/v2 \
-  -e SCIM_API_KEY=your-key \
-  scim-client:latest
-```
-
----
-
-## 📊 Performance & Compatibility
-
-### Performance Benchmarks
-- **Initial Load**: < 3 seconds
-- **Resource Discovery**: < 2 seconds
-- **List Loading**: < 1 second
-- **Form Submission**: < 2 seconds
-- **Memory Usage**: < 20MB base + 2MB per 100 resources
-
-### Browser Support
-- ✅ Chrome (latest)
-- ✅ Firefox (latest)
-- ✅ Safari (latest)
-- ✅ Edge (latest)
-
-### Mobile Responsiveness
-- ✅ Desktop (1200px+)
-- ✅ Tablet (768px-1199px)
-- ✅ Mobile (320px-767px)
-
----
-
-## 🔒 Security & Best Practices
+### Usage
+- **Direct**: `http://127.0.0.1:8002/proxy/https://api.example.com/endpoint`
+- **Through Nginx**: `http://localhost/proxy/https://api.example.com/endpoint`
 
 ### Security Features
-- **Input Validation** - Schema-based client-side validation
-- **XSS Prevention** - Proper HTML escaping
-- **CSRF Protection** - Proper authorization headers
-- **No Sensitive Storage** - Only configuration in localStorage
+- **HTTPS Only**: Only accepts HTTPS URLs for security
+- **URL Validation**: Regex validation of target URLs
+- **IP Restrictions**: Only allows localhost and private networks
+- **Rate Limiting**: Prevents abuse with request limits
+- **Content Type Validation**: Restricts allowed content types
 
-### Development Best Practices
-- **Modular Architecture** - Each resource type has separate components
-- **Event-Driven Design** - Custom events for navigation
-- **Error Handling** - Comprehensive error management
-- **Standards Compliance** - Full SCIM 2.0 compliance
+## File Structure
 
----
-
-## 🚨 Troubleshooting
-
-### Common Issues
-
-#### Port Already in Use
-```bash
-# Check what's using the ports
-netstat -tlnp | grep -E ':(7001|8001)'
-
-# Kill processes if needed
-sudo kill -9 <PID>
+```
+├── index.html                    # Main HTML entry point
+├── css/
+│   ├── main.css                 # Layout and base styles
+│   ├── components.css           # Component-specific styles
+│   └── accessibility.css        # Accessibility enhancements
+├── js/
+│   ├── config.js               # Centralized configuration
+│   ├── utils.js                # Shared utility functions
+│   ├── components.js           # Unified component system
+│   ├── app.js                  # Main application logic
+│   ├── scim-client.js          # SCIM API client
+│   ├── ui-components.js        # Reusable UI components
+│   ├── shared-list-utils.js    # Shared list functionality
+│   ├── user-list.js            # User list component
+│   ├── group-list.js           # Group list component
+│   ├── role-list.js            # Role list component
+│   ├── entitlement-list.js     # Entitlement list component
+│   ├── user-create-modal.js    # User creation modal
+│   ├── group-create-modal.js   # Group creation modal
+│   ├── role-create-modal.js    # Role creation modal
+│   ├── entitlement-create-modal.js # Entitlement creation modal
+│   ├── user-edit-form.js       # User edit form
+│   ├── group-edit-form.js      # Group edit form
+│   ├── role-edit-form.js       # Role edit form
+│   ├── entitlement-edit-form.js # Entitlement edit form
+│   ├── user-form.js            # User form utilities
+│   ├── group-form.js           # Group form utilities
+│   ├── role-form.js            # Role form utilities
+│   ├── entitlement-form.js     # Entitlement form utilities
+│   ├── server-info.js          # Server configuration display
+│   └── scim-rfc-schemas.js    # SCIM RFC compliance validation
+├── simple-cors-proxy.py        # CORS proxy for development
+├── docker-compose.yml          # Development environment
+└── Dockerfile                  # Container configuration
 ```
 
-#### SCIM Server Not Starting
-```bash
-# Check Python environment
-cd ~/scim-server
-source .venv/bin/activate
-python --version
+## Component Architecture
 
-# Check dependencies
-pip list | grep -E "(fastapi|uvicorn)"
+### Core Components
+- **`BaseListComponent`**: Common list functionality (pagination, search, filtering)
+- **`ModalManager`**: Consistent modal behavior and lifecycle
+- **`FormFieldRenderer`**: Schema-driven form field rendering
+- **`SchemaAttributeProcessor`**: Server schema attribute processing
+
+### Resource-Specific Components
+Each SCIM resource type has specialized components:
+- **List Components**: Display and manage resource lists
+- **Create Modals**: Create new resources with validation
+- **Edit Forms**: Edit existing resources with schema compliance
+- **Form Utilities**: Resource-specific form handling
+
+### Configuration System
+- **`APP_CONFIG`**: Application-wide settings and constants
+- **`UI_CONFIG`**: CSS classes and UI component settings
+- **`FORM_CONFIG`**: Form validation and field configuration
+- **`RESOURCE_CONFIG`**: Resource-specific settings and schemas
+- **`SCIM_CONFIG`**: SCIM specification compliance settings
+
+## Development
+
+### Making Changes
+1. Edit JavaScript files in `js/` directory
+2. Rebuild container: `docker-compose down && docker-compose up -d --build`
+3. Visit `http://localhost:8001`
+
+### Component Development
+- **New Components**: Extend base classes for consistency
+- **Configuration**: Add settings to appropriate config sections
+- **Utilities**: Use shared utilities for common operations
+- **Validation**: Follow established validation patterns
+
+## Common Issues
+
+### Page not loading
+- **Check**: Docker container is running (`docker ps`)
+- **Solution**: Restart container (`docker-compose up -d`)
+
+### Changes not appearing
+- **Check**: Container needs rebuild after code changes
+- **Solution**: `docker-compose down && docker-compose up -d --build`
+
+### Modal issues
+- **Check**: Browser console for JavaScript errors
+- **Common**: Method name mismatches in edit forms
+- **Specific**: `this.bindEvents is not a function` - check constructor calls
+
+### SCIM errors
+- **Check**: Endpoint configuration and API key in Settings
+- **Verify**: Server is accessible and returning proper responses
+- **Common**: `onSubmit must be a function` - ensure edit forms receive proper callback functions
+
+### Schema-related issues
+- **Check**: Server provides schemas via `/Schemas` endpoint
+- **Verify**: API key has proper permissions
+- **Fallback**: Application uses minimal schemas if server doesn't provide them
+- **Common**: `SCIM Schema not available from server` - check SCIM endpoint URL format and API key
+
+### localStorage quota exceeded
+- **Check**: Request logs filling up storage
+- **Solution**: Application automatically reduces log limit to prevent issues
+- **Manual**: Clear browser storage if needed
+
+### JSON rendering errors
+- **Common**: `[object Object]` or `Failed to render JSON: data is required`
+- **Cause**: Complex objects (arrays, nested objects) not properly formatted
+- **Solution**: Application uses `safeRenderJSON()` utility for null/undefined handling
+
+## Development Lessons Learned
+
+### Architectural Mistakes to Avoid
+
+#### 1. Code Duplication
+- **Mistake**: Implementing the same logic in multiple files (e.g., JSON formatting, null checks)
+- **Solution**: Create shared utility functions in `utils.js`
+- **Examples**: `formatReadonlyValue()`, `safeRenderJSON()`, `fetchSchemaForResource()`
+
+#### 2. Inconsistent Method Names
+- **Mistake**: Importing `bindFormEvents` but calling `bindEvents` in constructor
+- **Solution**: Use consistent naming across imports and method calls
+- **Pattern**: Import name should match the actual method name
+
+#### 3. Function Parameter Errors
+- **Mistake**: Passing SCIMClient object instead of callback function to edit forms
+- **Solution**: Pass proper async callback functions: `async (formData) => { return await client.updateUser(formData); }`
+
+#### 4. SCIM Response Format Assumptions
+- **Mistake**: Assuming direct arrays instead of ListResponse format `{ Resources: [...] }`
+- **Solution**: Always check for `response.Resources` first in SCIM client methods
+
+#### 5. localStorage Management
+- **Mistake**: Overly complex retry logic and dynamic limits
+- **Solution**: Simple error handling with automatic log reduction
+
+#### 6. Configuration Hardcoding
+- **Mistake**: Attempting to hardcode API keys in Docker environment variables
+- **Solution**: Use localStorage for user-configurable settings, Docker for infrastructure only
+
+### Best Practices Established
+
+#### 1. DRY Principle
+- **Rule**: Never duplicate logic across multiple files
+- **Implementation**: Shared utilities in `utils.js` for common operations
+- **Examples**: JSON rendering, schema fetching, error handling
+
+#### 2. Consistent Error Handling
+- **Pattern**: Use `safeAsync()` wrapper for all async operations
+- **Display**: Use `showError()` component for user-facing errors
+- **Logging**: Comprehensive error context with SCIM RFC references
+
+#### 3. Schema-Driven Development
+- **Approach**: Let server schemas drive form generation
+- **Fallback**: Graceful degradation to minimal schemas
+- **Validation**: Respect schema mutability and validation rules
+
+#### 4. Component Architecture
+- **Base Classes**: Extend `BaseListComponent`, `ModalManager` for consistency
+- **Configuration**: Use centralized config objects
+- **Utilities**: Leverage shared utilities for common operations
+
+### Common Debugging Patterns
+
+#### 1. Schema Issues
+```javascript
+// Check if schemas are being fetched correctly
+console.log('Schemas:', await client.getSchemas());
+console.log('Resource Types:', await client.getResourceTypes());
 ```
 
-#### CORS Issues
-- The client includes a CORS proxy for local development
-- If you see CORS errors, check that the proxy is running
-- Alternative: Use browser extensions to disable CORS for localhost
-
-#### Test Data Issues
-```bash
-# Regenerate test data
-cd ~/scim-server
-./generate_test_data.sh
-
-# Or reset the database
-rm test_scim.db
-./generate_test_data.sh
+#### 2. Form Submission Issues
+```javascript
+// Ensure proper callback function
+const onSubmit = async (formData) => {
+  return await client.updateUser(formData);
+};
 ```
 
-### Debug Commands
-```bash
-# Check server health
-curl http://localhost:7001/healthz
-
-# Check client is serving
-curl http://localhost:8001
-
-# Test SCIM endpoint directly
-curl -H "Authorization: Bearer api-key-12345" \
-     http://localhost:7001/scim-identifier/test-hr-server/scim/v2/Users
+#### 3. JSON Rendering Issues
+```javascript
+// Use safe rendering utility
+safeRenderJSON(container, data, '(empty)');
 ```
 
----
+#### 4. localStorage Issues
+```javascript
+// Check storage usage
+console.log('localStorage usage:', JSON.stringify(localStorage).length);
+```
 
-## 📈 Phase 1 Implementation Summary
+## SCIM 2.0 Compliance
 
-### ✅ Completed Features
-- **Dynamic Endpoint Discovery** - Automatic resource type and schema discovery
-- **Extended Resource Support** - Entitlements and roles with full CRUD
-- **Enhanced UI/UX** - Modern card-based layout with responsive design
-- **Comprehensive Testing** - Automated and manual testing suites
-- **Schema Validation** - Client-side validation using server schemas
+### Server-Assigned IDs
+- **Immutable IDs**: Server-assigned IDs are preserved and never editable
+- **Creation Process**: Server assigns unique ID during resource creation
+- **Update Process**: Server-assigned ID is preserved during updates
+- **Display**: Server-assigned fields shown as readonly
 
-### 🔮 Future Enhancements
-- **Relationship Management** - User-group and user-entitlement relationships
-- **Bulk Operations** - Multi-select and bulk create/update/delete
-- **Advanced Filtering** - Complex query support with filters
-- **Real-Time Updates** - WebSocket support for live updates
-- **Multi-Server Support** - Switch between different SCIM servers
+### Mutability Requirements
+- **Schema Compliance**: Forms respect schema mutability specifications
+- **Read-Only Fields**: Fields marked as read-only are properly excluded
+- **Immutable Fields**: Server-assigned fields cannot be modified
+- **Validation**: Proper validation of field mutability requirements
 
----
+### RFC Compliance
+- **RFC 7643**: Core SCIM schema compliance
+- **RFC 7644**: Service provider configuration compliance
+- **Error Handling**: RFC-compliant error parsing and display
+- **Request/Response**: Full SCIM request/response visibility
 
-## 📚 Additional Resources
+## Why This Architecture
 
-- **SCIM Server Documentation**: `../scim-server/README.md`
-- **SCIM 2.0 Standards**: RFC 7642, 7643, 7644
-- **GitHub Repository**: [https://github.com/ltsch/scim-client](https://github.com/ltsch/scim-client)
+The refactored architecture provides:
 
----
+- **Maintainability**: Centralized configuration and shared utilities
+- **Consistency**: Unified component patterns across all resources
+- **Scalability**: Easy to add new resource types and features
+- **Compliance**: Full SCIM 2.0 specification compliance
+- **Developer Experience**: Clean, predictable code structure
+- **Error Handling**: Comprehensive error parsing and user feedback
+- **Security**: XSS protection and input validation throughout
 
-## 🤝 Contributing
+The unified component system makes the codebase more maintainable, consistent, and compliant with SCIM specifications while providing a better developer experience. 
 
-This project is intended for open source use and is ready for GitHub. All code, scripts, and vendor files are included except for secrets and build output.
+## Schema Handling
 
-### Development Guidelines
-- Follow modular architecture principles
-- Write tests for new features
-- Maintain SCIM 2.0 compliance
-- Ensure cross-browser compatibility
-- Document all changes
+The application automatically fetches and uses server schemas for form generation:
 
----
+### Schema Sources
+- **Server Schemas**: Fetched from `/Schemas` endpoint
+- **Resource Types**: Fetched from `/ResourceTypes` endpoint  
+- **Fallback Schemas**: Minimal schemas when server doesn't provide them
 
-## 📄 License
+### Schema Usage
+- **Form Generation**: Edit forms use server schemas for field validation
+- **Attribute Display**: Forms show only schema-defined attributes
+- **Mutability**: Respects schema mutability requirements
+- **Validation**: Uses schema-defined validation rules
 
-MIT License - see LICENSE file for details.
-
----
-
-**Happy SCIM Testing! 🎉** 
+### Schema Fetching
+- **Automatic**: Schemas fetched when editing resources
+- **Caching**: Schemas cached for performance
+- **Error Handling**: Graceful fallback to minimal schemas
+- **Utility Function**: `fetchSchemaForResource()` handles schema retrieval 

@@ -1,4 +1,4 @@
-// js/group-edit-form.js - Refactored Group Edit Form
+// js/entitlement-create-modal.js - Refactored Entitlement Create Modal
 
 import { RESOURCE_CONFIG, UI_CONFIG, FORM_CONFIG } from './config.js';
 import {
@@ -11,12 +11,7 @@ import {
   clearElement,
   parseError,
   safeAsync,
-  handleMissingSchema,
-  formatReadonlyValue,
-  safeRenderJSON,
-  debugComplexFields,
-  detectComplexFields,
-  renderAllFields
+  handleMissingSchema
 } from './utils.js';
 import { renderJSON, showError, showSuccess } from './ui-components.js';
 
@@ -25,9 +20,9 @@ import { renderJSON, showError, showSuccess } from './ui-components.js';
 // ============================================================================
 
 /**
- * Process schema attributes for group edit form
+ * Process schema attributes for entitlement create modal
  */
-class GroupSchemaAttributeProcessor {
+class EntitlementCreateSchemaAttributeProcessor {
   /**
    * Get editable attributes from schema
    * @param {Object} schema - Schema object
@@ -55,34 +50,6 @@ class GroupSchemaAttributeProcessor {
       return FORM_CONFIG.SUPPORTED_TYPES.includes(attr.type);
     });
   }
-  
-  /**
-   * Get complex fields from schema and group data
-   * @param {Object} schema - Schema object
-   * @param {Object} group - Group data
-   * @returns {Array} Complex fields
-   */
-  static getComplexFields(schema, group) {
-    if (!schema || !Array.isArray(schema.attributes)) return [];
-    
-    // Dynamically detect complex fields based on data type
-    const complexFields = detectComplexFields(group);
-    
-    // Debug logging to understand what's happening
-    console.log('Complex fields found:', complexFields);
-    console.log('Group data keys:', Object.keys(group));
-    
-    return complexFields;
-  }
-  
-  /**
-   * Get readonly fields from group data
-   * @param {Object} group - Group data
-   * @returns {Array} Readonly fields
-   */
-  static getReadonlyFields(group) {
-    return getReadonlyFields(group, FORM_CONFIG.SERVER_ASSIGNED_FIELDS, FORM_CONFIG.SYSTEM_FIELDS);
-  }
 }
 
 // ============================================================================
@@ -90,24 +57,22 @@ class GroupSchemaAttributeProcessor {
 // ============================================================================
 
 /**
- * Render form fields for group edit form
+ * Render form fields for entitlement create modal
  */
-class GroupFormFieldRenderer {
+class EntitlementCreateFormFieldRenderer {
   /**
    * Render text field
    * @param {Object} attr - Field attribute
-   * @param {*} value - Field value
    * @returns {string} HTML for text field
    */
-  static renderTextField(attr, value) {
+  static renderTextField(attr) {
     const required = attr.required ? 'required' : '';
     const label = attr.name + (attr.required ? ' *' : '');
-    const escapedValue = escapeHTML(value !== undefined && value !== null ? value : '');
     
     return `
       <div class="${UI_CONFIG.CLASSES.FORM_GROUP}">
         <label for="${attr.name}" class="${UI_CONFIG.CLASSES.FORM_LABEL}">${escapeHTML(label)}</label>
-        <input type="text" id="${attr.name}" class="${UI_CONFIG.CLASSES.FORM_CONTROL}" value="${escapedValue}" ${required}>
+        <input type="text" id="${attr.name}" class="${UI_CONFIG.CLASSES.FORM_CONTROL}" ${required}>
       </div>
     `;
   }
@@ -115,18 +80,16 @@ class GroupFormFieldRenderer {
   /**
    * Render number field
    * @param {Object} attr - Field attribute
-   * @param {*} value - Field value
    * @returns {string} HTML for number field
    */
-  static renderNumberField(attr, value) {
+  static renderNumberField(attr) {
     const required = attr.required ? 'required' : '';
     const label = attr.name + (attr.required ? ' *' : '');
-    const escapedValue = escapeHTML(value !== undefined && value !== null ? value : '');
     
     return `
       <div class="${UI_CONFIG.CLASSES.FORM_GROUP}">
         <label for="${attr.name}" class="${UI_CONFIG.CLASSES.FORM_LABEL}">${escapeHTML(label)}</label>
-        <input type="number" id="${attr.name}" class="${UI_CONFIG.CLASSES.FORM_CONTROL}" value="${escapedValue}" ${required}>
+        <input type="number" id="${attr.name}" class="${UI_CONFIG.CLASSES.FORM_CONTROL}" ${required}>
       </div>
     `;
   }
@@ -134,18 +97,16 @@ class GroupFormFieldRenderer {
   /**
    * Render checkbox field
    * @param {Object} attr - Field attribute
-   * @param {*} value - Field value
    * @returns {string} HTML for checkbox field
    */
-  static renderCheckboxField(attr, value) {
+  static renderCheckboxField(attr) {
     const required = attr.required ? 'required' : '';
     const label = attr.name + (attr.required ? ' *' : '');
-    const checked = value === true ? 'checked' : '';
     
     return `
       <div class="${UI_CONFIG.CLASSES.FORM_GROUP}">
         <label class="${UI_CONFIG.CLASSES.FORM_LABEL} ${UI_CONFIG.CLASSES.FORM_CHECKBOX_LABEL}">
-          <input type="checkbox" id="${attr.name}" class="${UI_CONFIG.CLASSES.FORM_CHECKBOX}" ${checked} ${required}>
+          <input type="checkbox" id="${attr.name}" class="${UI_CONFIG.CLASSES.FORM_CHECKBOX}" ${required}>
           <span class="${UI_CONFIG.CLASSES.FORM_CHECKBOX_TEXT}">${escapeHTML(label)}</span>
         </label>
       </div>
@@ -155,18 +116,16 @@ class GroupFormFieldRenderer {
   /**
    * Render multi-valued field
    * @param {Object} attr - Field attribute
-   * @param {*} value - Field value
    * @returns {string} HTML for multi-valued field
    */
-  static renderMultiValuedField(attr, value) {
+  static renderMultiValuedField(attr) {
     const required = attr.required ? 'required' : '';
     const label = attr.name + (attr.required ? ' *' : '');
-    const escapedValue = Array.isArray(value) ? value.join(', ') : escapeHTML(value || '');
     
     return `
       <div class="${UI_CONFIG.CLASSES.FORM_GROUP}">
         <label for="${attr.name}" class="${UI_CONFIG.CLASSES.FORM_LABEL}">${escapeHTML(label)}</label>
-        <input type="text" id="${attr.name}" class="${UI_CONFIG.CLASSES.FORM_CONTROL}" value="${escapedValue}" ${required}>
+        <input type="text" id="${attr.name}" class="${UI_CONFIG.CLASSES.FORM_CONTROL}" ${required}>
         <small>Separate multiple values with commas</small>
       </div>
     `;
@@ -175,23 +134,22 @@ class GroupFormFieldRenderer {
   /**
    * Render field based on type
    * @param {Object} attr - Field attribute
-   * @param {*} value - Field value
    * @returns {string} HTML for field
    */
-  static renderField(attr, value) {
+  static renderField(attr) {
     if (attr.multiValued) {
-      return this.renderMultiValuedField(attr, value);
+      return this.renderMultiValuedField(attr);
     }
     
     switch (attr.type) {
       case 'boolean':
-        return this.renderCheckboxField(attr, value);
+        return this.renderCheckboxField(attr);
       case 'integer':
       case 'decimal':
-        return this.renderNumberField(attr, value);
+        return this.renderNumberField(attr);
       case 'string':
       default:
-        return this.renderTextField(attr, value);
+        return this.renderTextField(attr);
     }
   }
 }
@@ -246,37 +204,36 @@ class ReqResAccordion {
 }
 
 // ============================================================================
-// GROUP EDIT FORM RENDERER
+// ENTITLEMENT CREATE MODAL RENDERER
 // ============================================================================
 
 /**
- * Group edit form renderer
+ * Entitlement create modal renderer
  */
-class GroupEditFormRenderer {
+class EntitlementCreateModalRenderer {
   /**
-   * Create group edit form renderer
+   * Create entitlement create modal renderer
    * @param {HTMLElement} container - Container element
-   * @param {Object} group - Group data
    * @param {Function} onSubmit - Submit callback
    * @param {Object} options - Component options
    */
-  constructor(container, group, onSubmit, options = {}) {
+  constructor(container, onSubmit, options = {}) {
     this.container = container;
-    this.group = group;
     this.onSubmit = onSubmit;
     this.options = options;
     
     // Handle missing schema with fallback and warning
-    this.schema = handleMissingSchema(options.schema, 'Group', this.container);
+    this.schema = handleMissingSchema(options.schema, 'Entitlement', this.container);
     
-    // No longer need separate field arrays - we'll use detectComplexFields dynamically
+    this.attributes = EntitlementCreateSchemaAttributeProcessor.getEditableAttributes(this.schema);
     this.modalOverlay = null;
     this.modalContainer = null;
     this.form = null;
+    this.reqresPanel = null;
     
     this.validate();
     this.render();
-    this.bindFormEvents();
+    this.bindEvents();
   }
   
   /**
@@ -287,19 +244,15 @@ class GroupEditFormRenderer {
     validateElement(this.container, 'container');
     validateFunction(this.onSubmit, 'onSubmit');
     
-    if (!this.group) {
-      throw new Error('Group data is required');
-    }
-    
     // Schema validation is now handled in constructor with fallback
   }
   
   /**
-   * Render the form
+   * Render the modal
    */
   render() {
     this.createModal();
-    this.renderAllFields();
+    this.renderFormFields();
   }
   
   /**
@@ -319,7 +272,7 @@ class GroupEditFormRenderer {
     });
     
     const title = createElement('h2', {
-      textContent: `Edit Group: ${escapeHTML(this.group.displayName || this.group.id)}`
+      textContent: 'Create Entitlement'
     });
     
     const closeBtn = createElement('button', {
@@ -335,11 +288,17 @@ class GroupEditFormRenderer {
     });
     
     this.form = createElement('form', {
-      id: 'group-edit-form',
+      id: 'entitlement-create-form',
       className: UI_CONFIG.CLASSES.FORM
     });
     
     body.appendChild(this.form);
+    
+    // Create request/response panel
+    this.reqresPanel = createElement('div', {
+      id: 'entitlement-create-reqres-panel'
+    });
+    body.appendChild(this.reqresPanel);
     
     const footer = createElement('div', {
       className: UI_CONFIG.CLASSES.MODAL_FOOTER
@@ -348,7 +307,7 @@ class GroupEditFormRenderer {
     const submitBtn = createElement('button', {
       type: 'submit',
       className: `${UI_CONFIG.CLASSES.BTN} ${UI_CONFIG.CLASSES.BTN_PRIMARY}`,
-      textContent: 'Save Changes'
+      textContent: 'Create Entitlement'
     });
     
     const cancelBtn = createElement('button', {
@@ -368,71 +327,38 @@ class GroupEditFormRenderer {
   }
   
   /**
-   * Render all fields using the centralized renderAllFields function
+   * Render form fields
    */
-  renderAllFields() {
-    renderAllFields(this.form, this.group, this.schema, {
-      systemFields: FORM_CONFIG.SYSTEM_FIELDS,
-      readonly: true // Edit forms are readonly for now
+  renderFormFields() {
+    this.attributes.forEach(attr => {
+      const fieldHTML = EntitlementCreateFormFieldRenderer.renderField(attr);
+      const tempDiv = createElement('div');
+      tempDiv.innerHTML = fieldHTML;
+      this.form.appendChild(tempDiv.firstElementChild);
     });
   }
   
   /**
    * Bind form events
    */
-  bindFormEvents() {
+  bindEvents() {
+    // Form submission
     addEventListener(this.form, 'submit', (e) => {
       e.preventDefault();
       this.handleSubmit();
     });
     
-    // Setup modal manager
-    this.modalManager = new ModalManager(this.modalOverlay);
-  }
-  
-  /**
-   * Handle form submission
-   */
-  async handleSubmit() {
-    return await safeAsync(async () => {
-      // Since this is now a readonly form, just close the modal
-      this.modalManager.close();
-    }, async (error) => {
-      const parsedError = parseError(error);
-      await showError(this.form, parsedError);
+    // Close button
+    const closeBtn = this.modalOverlay.querySelector(`.${UI_CONFIG.CLASSES.MODAL_CLOSE}`);
+    addEventListener(closeBtn, 'click', () => {
+      this.close();
     });
-  }
-}
-
-// ============================================================================
-// MODAL MANAGER (Reused from user-edit-form.js)
-// ============================================================================
-
-/**
- * Modal manager for group edit form
- */
-class ModalManager {
-  /**
-   * Create modal manager
-   * @param {HTMLElement} modalOverlay - Modal overlay element
-   */
-  constructor(modalOverlay) {
-    this.modalOverlay = modalOverlay;
-    this.setupEventListeners();
-  }
-  
-  /**
-   * Setup modal event listeners
-   */
-  setupEventListeners() {
-    const handleEscape = (e) => {
-      if (e.key === 'Escape') {
-        this.close();
-        document.removeEventListener('keydown', handleEscape);
-      }
-    };
     
-    document.addEventListener('keydown', handleEscape);
+    // Cancel button
+    const cancelBtn = this.modalOverlay.querySelector('.modal-footer button:last-child');
+    addEventListener(cancelBtn, 'click', () => {
+      this.close();
+    });
     
     // Close on overlay click
     addEventListener(this.modalOverlay, 'click', (event) => {
@@ -441,13 +367,14 @@ class ModalManager {
       }
     });
     
-    // Close button
-    const closeBtn = this.modalOverlay.querySelector(`.${UI_CONFIG.CLASSES.MODAL_CLOSE}`);
-    if (closeBtn) {
-      addEventListener(closeBtn, 'click', () => {
+    // Close on escape key
+    const handleEscape = (event) => {
+      if (event.key === 'Escape') {
         this.close();
-      });
-    }
+        document.removeEventListener('keydown', handleEscape);
+      }
+    };
+    document.addEventListener('keydown', handleEscape);
   }
   
   /**
@@ -458,6 +385,63 @@ class ModalManager {
       this.modalOverlay.parentNode.removeChild(this.modalOverlay);
     }
   }
+  
+  /**
+   * Handle form submission
+   */
+  async handleSubmit() {
+    return await safeAsync(async () => {
+      const entitlementData = { schemas: [this.schema.id] };
+      const errors = [];
+      
+      // Collect form data
+      this.attributes.forEach(attr => {
+        const field = this.form.querySelector(`#${attr.name}`);
+        if (!field) return;
+        
+        let value = field.type === 'checkbox' ? field.checked : field.value;
+        
+        // Handle multi-valued fields
+        if (attr.multiValued && typeof value === 'string') {
+          value = value.split(',').map(v => v.trim()).filter(v => v);
+        }
+        
+        // Validate required fields
+        if (attr.required && (!value || (Array.isArray(value) && value.length === 0))) {
+          errors.push(`${attr.name} is required`);
+        }
+        
+        // Add non-empty values to entitlement data
+        if (value && (!Array.isArray(value) || value.length > 0)) {
+          entitlementData[attr.name] = value;
+        }
+      });
+      
+      // Show validation errors
+      if (errors.length > 0) {
+        await showError(this.form, errors.join('; '));
+        return;
+      }
+      
+      // Submit form
+      const result = await this.onSubmit(entitlementData);
+      
+      // Show request/response if available
+      if (result && result.__req && result.__res) {
+        ReqResAccordion.create(result.__req, result.__res, this.reqresPanel);
+      }
+      
+      // Show success message
+      showSuccess(this.container, 'Entitlement created successfully!');
+      
+      // Close modal
+      this.close();
+      
+    }, async (error) => {
+      const parsedError = parseError(error);
+      await showError(this.form, parsedError);
+    });
+  }
 }
 
 // ============================================================================
@@ -465,12 +449,11 @@ class ModalManager {
 // ============================================================================
 
 /**
- * Render group edit form
+ * Render entitlement create modal
  * @param {HTMLElement} container - Container element
- * @param {Object} group - Group data
  * @param {Function} onSubmit - Submit callback
- * @param {Object} options - Form options
+ * @param {Object} options - Modal options
  */
-export function renderGroupEditForm(container, group, onSubmit, options = {}) {
-  return new GroupEditFormRenderer(container, group, onSubmit, options);
+export function renderEntitlementCreateModal(container, onSubmit, options = {}) {
+  return new EntitlementCreateModalRenderer(container, onSubmit, options);
 } 

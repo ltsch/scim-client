@@ -162,10 +162,19 @@ test.describe('SCIM Client E2E Tests', () => {
     await page.click('text=Server Config');
     
     // Wait for server config to load
-    await page.waitForSelector('.reqres-accordion', { timeout: 10000 });
+    await page.waitForSelector('.config-section', { timeout: 10000 });
     
-    // Check that we're on the server config page
-    await expect(page.locator('h1')).toContainText('Server Configuration');
+    // Check that we're on the server config page and see the summary sections
+    await expect(page.locator('h2:has-text("Service Provider Configuration")')).toBeVisible();
+    
+    // Check for raw data sections
+    await expect(page.locator('h2:has-text("Raw Service Provider Configuration Data")')).toBeVisible();
+    await expect(page.locator('h2:has-text("Raw Resource Types Data")')).toBeVisible();
+    await expect(page.locator('h2:has-text("Raw Schemas Data")')).toBeVisible();
+    await expect(page.locator('h2:has-text("Complete Raw Configuration Data")')).toBeVisible();
+    
+    // Check that JSON viewers are present
+    await expect(page.locator('.json-viewer')).toHaveCount(4);
   });
 
   test('should handle error conditions gracefully', async ({ page }) => {

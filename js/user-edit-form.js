@@ -1,183 +1,545 @@
-// js/user-edit-form.js
+// js/user-edit-form.js - Refactored User Edit Form
 
-import { renderJSON } from './ui-components.js';
+import { RESOURCE_CONFIG, UI_CONFIG, FORM_CONFIG } from './config.js';
+import {
+  validateElement,
+  validateRequired,
+  validateFunction,
+  escapeHTML,
+  createElement,
+  addEventListener,
+  clearElement,
+  parseError,
+  safeAsync,
+  handleMissingSchema,
+  formatReadonlyValue,
+  safeRenderJSON,
+  debugComplexFields,
+  detectComplexFields,
+  getReadonlyFields,
+  renderAllFields
+} from './utils.js';
+import { renderJSON, showError, showSuccess } from './ui-components.js';
 
-const SYSTEM_FIELDS = ['id', 'externalId', 'meta', 'password', 'schemas', 'scimGatewayData'];
+// ============================================================================
+// FORM FIELD VALIDATOR
+// ============================================================================
 
-function getSchemaAttributes(schema) {
-  if (!schema || !Array.isArray(schema.attributes)) return [];
-  return schema.attributes.filter(attr => !attr.readOnly && attr.mutability !== 'readOnly' && !SYSTEM_FIELDS.includes(attr.name));
+/**
+ * Form field validator
+ */
+class FormFieldValidator {
+  /**
+   * Validate a single field
+   * @param {Object} attr - Field attribute
+   * @param {*} value - Field value
+   * @throws {Error} If validation fails
+   */
+  static validateField(attr, value) {
+    if (attr.required && (value === undefined || value === null || value === '')) {
+      throw new Error(`${attr.name} is required`);
+    }
+    
+    if (value !== undefined && value !== null && value !== '') {
+      switch (attr.type) {
+        case 'integer':
+          if (isNaN(parseInt(value))) {
+            throw new Error(`${attr.name} must be a valid integer`);
+          }
+          break;
+        case 'decimal':
+          if (isNaN(parseFloat(value))) {
+            throw new Error(`${attr.name} must be a valid number`);
+          }
+          break;
+        case 'boolean':
+          if (typeof value !== 'boolean') {
+            throw new Error(`${attr.name} must be a boolean value`);
+          }
+          break;
+      }
+    }
+    
+    return true;
+  }
+  
+  /**
+   * Validate form data against attributes
+   * @param {Object} formData - Form data
+   * @param {Array} attributes - Field attributes
+   * @throws {Error} If validation fails
+   */
+  static validateFormData(formData, attributes) {
+    const errors = [];
+    
+    attributes.forEach(attr => {
+      try {
+        this.validateField(attr, formData[attr.name]);
+      } catch (error) {
+        errors.push(error.message);
+      }
+    });
+    
+    if (errors.length > 0) {
+      throw new Error(errors.join('; '));
+    }
+  }
 }
 
-export function renderUserEditForm(container, user, onSubmit, options = {}) {
-  const { schema } = options;
-  const attributes = getSchemaAttributes(schema);
+// ============================================================================
+// SCHEMA ATTRIBUTE PROCESSOR
+// ============================================================================
+
+/**
+ * Process schema attributes for form rendering
+ */
+class SchemaAttributeProcessor {
+  /**
+   * Get editable attributes from schema
+   * @param {Object} schema - Schema object
+   * @returns {Array} Editable attributes
+   */
+  static getEditableAttributes(schema) {
+    if (!schema || !Array.isArray(schema.attributes)) return [];
+    
+    return schema.attributes.filter(attr => {
+      // Skip system fields
+      if (FORM_CONFIG.SYSTEM_FIELDS.includes(attr.name)) return false;
+      if (attr.name === 'schemas') return false;
+      
+      // Skip server-assigned fields (never editable)
+      if (FORM_CONFIG.SERVER_ASSIGNED_FIELDS.includes(attr.name)) return false;
+      
+
+      
+      // Include fields that are not explicitly read-only
+      if (attr.readOnly === true) return false;
+      if (attr.mutability === 'readOnly') return false;
+      
+      // Exclude complex object types that should be rendered as JSON
+      if (attr.type === 'complex' || attr.type === 'object') return false;
+      if (attr.multiValued && attr.type !== 'string') return false;
+      
+      // Include supported types
+      return FORM_CONFIG.SUPPORTED_TYPES.includes(attr.type);
+    });
+  }
   
-  // Create modal overlay
-  const modalOverlay = document.createElement('div');
-  modalOverlay.className = 'modal-overlay';
+  /**
+   * Get complex fields from schema and user data
+   * @param {Object} schema - Schema object
+   * @param {Object} user - User data
+   * @returns {Array} Complex fields
+   */
+  static getComplexFields(schema, user) {
+    if (!schema || !Array.isArray(schema.attributes)) return [];
+    
+    // Dynamically detect complex fields based on data type
+    const complexFields = detectComplexFields(user);
+    
+    // Debug logging to understand what's happening
+    console.log('Complex fields found:', complexFields);
+    console.log('User data keys:', Object.keys(user));
+    
+    return complexFields;
+  }
   
-  // Create modal container
-  const modalContainer = document.createElement('div');
-  modalContainer.className = 'modal-container';
+  /**
+   * Get readonly fields from user data
+   * @param {Object} user - User data
+   * @returns {Array} Readonly fields
+   */
+  static getReadonlyFields(user) {
+    return getReadonlyFields(user, FORM_CONFIG.SERVER_ASSIGNED_FIELDS, FORM_CONFIG.SYSTEM_FIELDS);
+  }
+}
+
+// ============================================================================
+// FORM FIELD RENDERER
+// ============================================================================
+
+/**
+ * Render form fields based on attribute type
+ */
+class FormFieldRenderer {
+  /**
+   * Render text field
+   * @param {Object} attr - Field attribute
+   * @param {*} value - Field value
+   * @returns {string} HTML for text field
+   */
+  static renderTextField(attr, value) {
+    const required = attr.required ? 'required' : '';
+    const label = attr.name + (attr.required ? ' *' : '');
+    const escapedValue = escapeHTML(value !== undefined && value !== null ? value : '');
+    
+    return `
+      <div class="${UI_CONFIG.CLASSES.FORM_GROUP}">
+        <label for="${attr.name}" class="${UI_CONFIG.CLASSES.FORM_LABEL}">${escapeHTML(label)}</label>
+        <input type="text" id="${attr.name}" class="${UI_CONFIG.CLASSES.FORM_CONTROL}" value="${escapedValue}" ${required}>
+      </div>
+    `;
+  }
   
-  // Create modal content
-  modalContainer.innerHTML = `
-    <div class="modal-header">
-      <h2>Edit User</h2>
-      <button class="modal-close" onclick="this.closest('.modal-overlay').remove()">&times;</button>
-    </div>
-    <div class="modal-body">
-      <form id="user-edit-form" class="user-form">
-        ${attributes.map(attr => {
-          const required = attr.required ? 'required' : '';
-          const label = attr.name + (attr.required ? ' *' : '');
-          let inputType = 'text';
-          let value = user[attr.name];
-          if (attr.type === 'boolean') inputType = 'checkbox';
-          if (attr.type === 'integer' || attr.type === 'decimal') inputType = 'number';
-          if (typeof value === 'object' && value !== null) {
-            // Render as expandable JSON below, not as input
-            return '';
-          }
-          if (attr.multiValued && attr.type === 'string') {
-            value = Array.isArray(value) ? value.join(', ') : '';
-            return `<label>${label}<br><input type="text" id="${attr.name}" ${required} value="${value || ''}" placeholder="comma,separated,values"></label>`;
-          }
-          if (attr.type === 'boolean') {
-            return `<label>${label}<br><input type="checkbox" id="${attr.name}" ${required} ${value ? 'checked' : ''}></label>`;
-          }
-          return `<label>${label}<br><input type="${inputType}" id="${attr.name}" ${required} value="${value !== undefined ? value : ''}"></label>`;
-        }).join('')}
-        <div id="user-edit-form-error" class="form-error"></div>
-      </form>
-      <div id="user-edit-json-fields"></div>
-      <div id="user-edit-readonly-fields"></div>
-      <div id="user-edit-reqres-panel"></div>
-    </div>
-    <div class="modal-footer">
-      <button type="button" class="btn btn-secondary" onclick="this.closest('.modal-overlay').remove()">Cancel</button>
-      <button type="submit" form="user-edit-form" class="btn btn-primary">Update User</button>
-    </div>
-  `;
+  /**
+   * Render number field
+   * @param {Object} attr - Field attribute
+   * @param {*} value - Field value
+   * @returns {string} HTML for number field
+   */
+  static renderNumberField(attr, value) {
+    const required = attr.required ? 'required' : '';
+    const label = attr.name + (attr.required ? ' *' : '');
+    const escapedValue = escapeHTML(value !== undefined && value !== null ? value : '');
+    
+    return `
+      <div class="${UI_CONFIG.CLASSES.FORM_GROUP}">
+        <label for="${attr.name}" class="${UI_CONFIG.CLASSES.FORM_LABEL}">${escapeHTML(label)}</label>
+        <input type="number" id="${attr.name}" class="${UI_CONFIG.CLASSES.FORM_CONTROL}" value="${escapedValue}" ${required}>
+      </div>
+    `;
+  }
   
-  // Append modal to body
-  modalOverlay.appendChild(modalContainer);
-  document.body.appendChild(modalOverlay);
+  /**
+   * Render checkbox field
+   * @param {Object} attr - Field attribute
+   * @param {*} value - Field value
+   * @returns {string} HTML for checkbox field
+   */
+  static renderCheckboxField(attr, value) {
+    const required = attr.required ? 'required' : '';
+    const label = attr.name + (attr.required ? ' *' : '');
+    const checked = value === true ? 'checked' : '';
+    
+    return `
+      <div class="${UI_CONFIG.CLASSES.FORM_GROUP}">
+        <label class="${UI_CONFIG.CLASSES.FORM_LABEL} ${UI_CONFIG.CLASSES.FORM_CHECKBOX_LABEL}">
+          <input type="checkbox" id="${attr.name}" class="${UI_CONFIG.CLASSES.FORM_CHECKBOX}" ${checked} ${required}>
+          <span class="${UI_CONFIG.CLASSES.FORM_CHECKBOX_TEXT}">${escapeHTML(label)}</span>
+        </label>
+      </div>
+    `;
+  }
   
-  // Render object/array fields as expandable JSON
-  const jsonFieldsDiv = modalContainer.querySelector('#user-edit-json-fields');
-  const jsonFields = (schema && schema.attributes ? schema.attributes.filter(attr => typeof user[attr.name] === 'object' && user[attr.name] !== null && !SYSTEM_FIELDS.includes(attr.name)) : []);
-  jsonFields.forEach(attr => {
-    const fieldDiv = document.createElement('div');
-    fieldDiv.className = 'json-field';
-    fieldDiv.innerHTML = `<label>${attr.name} (view only):</label>`;
-    renderJSON(fieldDiv, user[attr.name]);
-    jsonFieldsDiv.appendChild(fieldDiv);
-  });
+  /**
+   * Render multi-valued field
+   * @param {Object} attr - Field attribute
+   * @param {*} value - Field value
+   * @returns {string} HTML for multi-valued field
+   */
+  static renderMultiValuedField(attr, value) {
+    const required = attr.required ? 'required' : '';
+    const label = attr.name + (attr.required ? ' *' : '');
+    const escapedValue = Array.isArray(value) ? value.join(', ') : escapeHTML(value || '');
+    
+    return `
+      <div class="${UI_CONFIG.CLASSES.FORM_GROUP}">
+        <label for="${attr.name}" class="${UI_CONFIG.CLASSES.FORM_LABEL}">${escapeHTML(label)}</label>
+        <input type="text" id="${attr.name}" class="${UI_CONFIG.CLASSES.FORM_CONTROL}" value="${escapedValue}" ${required}>
+        <small>Separate multiple values with commas</small>
+      </div>
+    `;
+  }
   
-  // Render read-only/system fields at the bottom
-  const readonlyDiv = modalContainer.querySelector('#user-edit-readonly-fields');
-  SYSTEM_FIELDS.forEach(field => {
-    if (user[field] !== undefined && user[field] !== null) {
-      const fieldDiv = document.createElement('div');
-      fieldDiv.className = 'readonly-field';
-      if (typeof user[field] === 'object') {
-        fieldDiv.innerHTML = `<label>${field} (read-only):</label>`;
-        renderJSON(fieldDiv, user[field]);
-      } else {
-        fieldDiv.innerHTML = `<label>${field} (read-only): <span class="readonly-value">${user[field]}</span></label>`;
-      }
-      readonlyDiv.appendChild(fieldDiv);
+  /**
+   * Render field based on type
+   * @param {Object} attr - Field attribute
+   * @param {*} value - Field value
+   * @returns {string} HTML for field
+   */
+  static renderField(attr, value) {
+    if (attr.multiValued) {
+      return this.renderMultiValuedField(attr, value);
     }
-  });
+    
+    switch (attr.type) {
+      case 'boolean':
+        return this.renderCheckboxField(attr, value);
+      case 'integer':
+      case 'decimal':
+        return this.renderNumberField(attr, value);
+      case 'string':
+      default:
+        return this.renderTextField(attr, value);
+    }
+  }
+}
+
+// ============================================================================
+// MODAL MANAGER
+// ============================================================================
+
+/**
+ * Modal manager for user edit form
+ */
+class ModalManager {
+  /**
+   * Create modal manager
+   * @param {HTMLElement} modalOverlay - Modal overlay element
+   */
+  constructor(modalOverlay) {
+    this.modalOverlay = modalOverlay;
+    this.setupEventListeners();
+  }
   
-  const form = modalContainer.querySelector('#user-edit-form');
-  const reqresPanel = modalContainer.querySelector('#user-edit-reqres-panel');
+  /**
+   * Setup modal event listeners
+   */
+  setupEventListeners() {
+    const handleEscape = (e) => {
+      if (e.key === 'Escape') {
+        this.close();
+        document.removeEventListener('keydown', handleEscape);
+      }
+    };
+    
+    document.addEventListener('keydown', handleEscape);
+    
+    // Close on overlay click
+    addEventListener(this.modalOverlay, 'click', (event) => {
+      if (event.target === this.modalOverlay) {
+        this.close();
+      }
+    });
+    
+    // Close button
+    const closeBtn = this.modalOverlay.querySelector(`.${UI_CONFIG.CLASSES.MODAL_CLOSE}`);
+    if (closeBtn) {
+      addEventListener(closeBtn, 'click', () => {
+        this.close();
+      });
+    }
+  }
   
-  function showReqResAccordion(req, res) {
-    reqresPanel.innerHTML = '';
-    const accordion = document.createElement('div');
-    accordion.className = 'reqres-accordion';
-    const toggleBtn = document.createElement('button');
-    toggleBtn.textContent = 'Show Raw Request/Response';
-    toggleBtn.className = 'reqres-toggle-btn';
-    toggleBtn.className = 'reqres-toggle-btn';
-    const panel = document.createElement('div');
-    panel.className = 'reqres-panel';
+  /**
+   * Close the modal
+   */
+  close() {
+    if (this.modalOverlay && this.modalOverlay.parentNode) {
+      this.modalOverlay.parentNode.removeChild(this.modalOverlay);
+    }
+  }
+}
+
+// ============================================================================
+// REQUEST/RESPONSE ACCORDION
+// ============================================================================
+
+/**
+ * Create request/response accordion
+ */
+class ReqResAccordion {
+  /**
+   * Create accordion for request/response display
+   * @param {Object} req - Request data
+   * @param {Object} res - Response data
+   * @param {HTMLElement} container - Container element
+   */
+  static create(req, res, container) {
+    clearElement(container);
+    
+    const accordion = createElement('div', {
+      className: UI_CONFIG.CLASSES.REQRES_ACCORDION
+    });
+    
+    const toggleBtn = createElement('button', {
+      className: UI_CONFIG.CLASSES.REQRES_TOGGLE_BTN,
+      textContent: 'Show Raw Request/Response'
+    });
+    
+    const panel = createElement('div', {
+      className: UI_CONFIG.CLASSES.REQRES_PANEL
+    });
+    
     accordion.appendChild(toggleBtn);
     accordion.appendChild(panel);
-    toggleBtn.onclick = () => {
+    
+    addEventListener(toggleBtn, 'click', () => {
       if (panel.classList.contains('hidden')) {
         panel.classList.remove('hidden');
         toggleBtn.textContent = 'Hide Raw Request/Response';
-        panel.innerHTML = `<pre class="json-viewer">${escapeHTML(typeof req === 'object' ? JSON.stringify(req, null, 2) : String(req))}\n\n${escapeHTML(typeof res === 'object' ? JSON.stringify(res, null, 2) : String(res))}</pre>`;
+        clearElement(panel);
+        renderJSON(panel, { request: req, response: res });
       } else {
         panel.classList.add('hidden');
         toggleBtn.textContent = 'Show Raw Request/Response';
       }
-    };
-    reqresPanel.appendChild(accordion);
-  }
-
-  function escapeHTML(str) {
-    return String(str).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;','\'':'&#39;'}[c]));
-  }
-  
-  // Handle form submission
-  form.onsubmit = async (e) => {
-    e.preventDefault();
-    const errorDiv = form.querySelector('#user-edit-form-error');
-    const updatedUser = { schemas: [schema.id], id: user.id };
-    let hasError = false;
-    attributes.forEach(attr => {
-      const input = form[attr.name];
-      if (!input) return; // Skip attributes with no input (e.g., objects/arrays)
-      let value = input.value;
-      if (attr.type === 'boolean') value = input.checked;
-      if (attr.multiValued && attr.type === 'string') {
-        value = value.split(',').map(s => s.trim()).filter(Boolean);
-      }
-      if (attr.required && (!value || (Array.isArray(value) && value.length === 0))) {
-        hasError = true;
-      }
-      if (value && (!Array.isArray(value) || value.length > 0)) {
-        updatedUser[attr.name] = value;
-      }
     });
-    if (hasError) {
-      errorDiv.textContent = 'All required fields must be filled.';
-      return;
-    }
-    errorDiv.textContent = '';
     
-    try {
-      const result = await onSubmit(updatedUser);
-      if (result && result.__req && result.__res) {
-        showReqResAccordion(result.__req, result.__res);
-      }
-      // Close modal on successful submission
-      if (result && result.__res && result.__res.ok) {
-        modalOverlay.remove();
-      }
-    } catch (error) {
-      errorDiv.textContent = `Error: ${error.message}`;
-    }
-  };
+    container.appendChild(accordion);
+  }
+}
+
+// ============================================================================
+// USER EDIT FORM RENDERER
+// ============================================================================
+
+/**
+ * User edit form renderer
+ */
+class UserEditFormRenderer {
+  /**
+   * Create user edit form renderer
+   * @param {HTMLElement} container - Container element
+   * @param {Object} user - User data
+   * @param {Function} onSubmit - Submit callback
+   * @param {Object} options - Component options
+   */
+  constructor(container, user, onSubmit, options = {}) {
+    this.container = container;
+    this.user = user;
+    this.onSubmit = onSubmit;
+    this.options = options;
+    
+    // Handle missing schema with fallback and warning
+    this.schema = handleMissingSchema(options.schema, 'User', this.container);
+    
+    // No longer need separate field arrays - we'll use detectComplexFields dynamically
+    this.modalOverlay = null;
+    this.modalContainer = null;
+    this.form = null;
+    
+    this.validate();
+    this.render();
+    this.bindFormEvents();
+  }
   
-  // Close modal when clicking outside
-  modalOverlay.addEventListener('click', (e) => {
-    if (e.target === modalOverlay) {
-      modalOverlay.remove();
+  /**
+   * Validate component configuration
+   * @throws {Error} If validation fails
+   */
+  validate() {
+    validateElement(this.container, 'container');
+    validateFunction(this.onSubmit, 'onSubmit');
+    
+    if (!this.user) {
+      throw new Error('User data is required');
     }
-  });
+    
+    // Schema validation is now handled in constructor with fallback
+  }
   
-  // Close modal on Escape key
-  const handleEscape = (e) => {
-    if (e.key === 'Escape') {
-      modalOverlay.remove();
-      document.removeEventListener('keydown', handleEscape);
-    }
-  };
-  document.addEventListener('keydown', handleEscape);
+  /**
+   * Render the form
+   */
+  render() {
+    this.createModal();
+    this.renderAllFields();
+  }
+  
+  /**
+   * Create modal structure
+   */
+  createModal() {
+    this.modalOverlay = createElement('div', {
+      className: UI_CONFIG.CLASSES.MODAL_OVERLAY
+    });
+    
+    this.modalContainer = createElement('div', {
+      className: UI_CONFIG.CLASSES.MODAL_CONTAINER
+    });
+    
+    const header = createElement('div', {
+      className: UI_CONFIG.CLASSES.MODAL_HEADER
+    });
+    
+    const title = createElement('h2', {
+      textContent: `Edit User: ${escapeHTML(this.user.displayName || this.user.userName || this.user.id)}`
+    });
+    
+    const closeBtn = createElement('button', {
+      className: UI_CONFIG.CLASSES.MODAL_CLOSE,
+      textContent: '×'
+    });
+    
+    header.appendChild(title);
+    header.appendChild(closeBtn);
+    
+    const body = createElement('div', {
+      className: UI_CONFIG.CLASSES.MODAL_BODY
+    });
+    
+    this.form = createElement('form', {
+      id: 'user-edit-form',
+      className: UI_CONFIG.CLASSES.FORM
+    });
+    
+    body.appendChild(this.form);
+    
+    const footer = createElement('div', {
+      className: UI_CONFIG.CLASSES.MODAL_FOOTER
+    });
+    
+    const submitBtn = createElement('button', {
+      type: 'submit',
+      className: `${UI_CONFIG.CLASSES.BTN} ${UI_CONFIG.CLASSES.BTN_PRIMARY}`,
+      textContent: 'Save Changes'
+    });
+    
+    const cancelBtn = createElement('button', {
+      type: 'button',
+      className: `${UI_CONFIG.CLASSES.BTN} ${UI_CONFIG.CLASSES.BTN_SECONDARY}`,
+      textContent: 'Cancel'
+    });
+    
+    footer.appendChild(submitBtn);
+    footer.appendChild(cancelBtn);
+    
+    this.modalContainer.appendChild(header);
+    this.modalContainer.appendChild(body);
+    this.modalContainer.appendChild(footer);
+    this.modalOverlay.appendChild(this.modalContainer);
+    document.body.appendChild(this.modalOverlay);
+  }
+  
+  /**
+   * Render all fields using the centralized renderAllFields function
+   */
+  renderAllFields() {
+    renderAllFields(this.form, this.user, this.schema, {
+      systemFields: FORM_CONFIG.SYSTEM_FIELDS,
+      readonly: true // Edit forms are readonly for now
+    });
+  }
+  
+  /**
+   * Bind form events
+   */
+  bindFormEvents() {
+    addEventListener(this.form, 'submit', (e) => {
+      e.preventDefault();
+      this.handleSubmit();
+    });
+    
+    // Setup modal manager
+    this.modalManager = new ModalManager(this.modalOverlay);
+  }
+  
+  /**
+   * Handle form submission
+   */
+  async handleSubmit() {
+    return await safeAsync(async () => {
+      // Since this is now a readonly form, just close the modal
+      this.modalManager.close();
+    }, async (error) => {
+      const parsedError = parseError(error);
+      await showError(this.form, parsedError);
+    });
+  }
+}
+
+// ============================================================================
+// MAIN EXPORT FUNCTION
+// ============================================================================
+
+/**
+ * Render user edit form
+ * @param {HTMLElement} container - Container element
+ * @param {Object} user - User data
+ * @param {Function} onSubmit - Submit callback
+ * @param {Object} options - Form options
+ */
+export function renderUserEditForm(container, user, onSubmit, options = {}) {
+  return new UserEditFormRenderer(container, user, onSubmit, options);
 } 

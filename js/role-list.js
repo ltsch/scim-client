@@ -1,177 +1,289 @@
-// js/role-list.js
+// js/role-list.js - Refactored Role List Component
 
-import { renderJSON, showLoading, showError } from './ui-components.js';
+import { RESOURCE_CONFIG, UI_CONFIG } from './config.js';
+import { 
+  validateElement, 
+  validateRequired,
+  escapeHTML,
+  createElement,
+  addEventListener,
+  clearElement,
+  parseError,
+  safeAsync
+} from './utils.js';
+import { showError, showLoading, renderJSON, createJSONViewerModal } from './ui-components.js';
+import { 
+  BaseListComponent, 
+  SCIMFilterBuilder, 
+  getCoreColumns, 
+  getSchemaAttributes,
+  validateContainer,
+  validateData
+} from './shared-list-utils.js';
+import { renderRoleCreateModal } from './role-create-modal.js';
 
-export async function renderRoleList(container, client, mainPanel, reqResPanel) {
-  if (!container) return;
+// ============================================================================
+// ROLE LIST COMPONENT
+// ============================================================================
 
-  container.innerHTML = `
-    <div class="section-header">
-      <h2>Roles</h2>
-      <button class="btn btn-primary" onclick="window.createRole()">
-        <i class="fas fa-plus"></i> Create Role
-      </button>
-    </div>
-    <div class="loading-spinner" id="role-loading">
-      <div class="spinner"></div>
-      <p>Loading roles...</p>
-    </div>
-    <div class="content-area hidden" id="role-content">
-      <div class="summary-stats" id="role-stats"></div>
-      <div class="resource-list" id="role-list"></div>
-    </div>
-  `;
+/**
+ * Role list component extending base list component
+ */
+class RoleListComponent extends BaseListComponent {
+  /**
+   * Create role list component
+   * @param {HTMLElement} container - Container element
+   * @param {Array} roles - Roles data
+   * @param {Function} onSelectRole - Role selection callback
+   * @param {Object} options - Component options
+   */
+  constructor(container, roles, onSelectRole, options = {}) {
+    super(container, roles, onSelectRole, options);
+    this.schema = options.schema;
+    this.client = options.client;
+  }
 
-  // Make createRole globally available
-  window.createRole = () => {
-    const event = new CustomEvent('navigate', { 
-      detail: { section: 'roles', action: 'create' } 
+  /**
+   * Get columns to display
+   * @returns {Array} Column names
+   */
+  getColumns() {
+    return RESOURCE_CONFIG.ROLE.PREFERRED_COLUMNS;
+  }
+
+  /**
+   * Get search fields
+   * @returns {Array} Search field names
+   */
+  getSearchFields() {
+    return RESOURCE_CONFIG.ROLE.SEARCH_FIELDS;
+  }
+
+  /**
+   * Get common attributes
+   * @returns {Array} Common attribute names
+   */
+  getCommonAttributes() {
+    return RESOURCE_CONFIG.ROLE.COMMON_ATTRIBUTES;
+  }
+
+  /**
+   * Get role display name
+   * @param {Object} role - Role object
+   * @returns {string} Display name
+   */
+  getItemDisplayName(role) {
+    return role.displayName || role.id || 'Unknown Role';
+  }
+
+  /**
+   * Render role details
+   * @param {HTMLElement} container - Container element
+   * @param {Object} role - Role object
+   */
+  renderItemDetails(container, role) {
+    const details = createElement('div', {
+      className: 'role-details'
     });
-    document.dispatchEvent(event);
-  };
+    
+    const header = createElement('div', {
+      className: 'role-details-header'
+    });
+    
+    header.innerHTML = `
+      <h3>${escapeHTML(this.getItemDisplayName(role))}</h3>
+      <div class="role-id">ID: ${escapeHTML(role.id)}</div>
+    `;
+    
+    const content = createElement('div', {
+      className: 'role-details-content'
+    });
+    
+    // Render role data as JSON
+    renderJSON(content, role);
+    
+    details.appendChild(header);
+    details.appendChild(content);
+    container.appendChild(details);
+  }
 
-  try {
-    showLoading('role-loading', 'role-content');
+  /**
+   * Format cell value for display
+   * @param {*} value - Cell value
+   * @param {string} column - Column name
+   * @returns {string} Formatted value
+   */
+  formatCellValue(value, column) {
+    if (value === null || value === undefined) return '';
     
-    const response = await client.getRoles();
+    switch (column) {
+      case 'description':
+        if (typeof value === 'string' && value.length > 50) {
+          return value.substring(0, 50) + '...';
+        }
+        return String(value);
+        
+      case 'active':
+        return value ? 'Active' : 'Inactive';
+        
+      default:
+        return super.formatCellValue(value, column);
+    }
+  }
+}
+
+// ============================================================================
+// MAIN RENDER FUNCTION
+// ============================================================================
+
+/**
+ * Render role list
+ * @param {HTMLElement} container - Container element
+ * @param {SCIMClient} client - SCIM client
+ * @param {Object} options - Render options
+ */
+export async function renderRoleList(container, client, options = {}) {
+  return await safeAsync(async () => {
+    validateElement(container, 'container');
+    validateRequired(client, 'SCIM client');
     
-    if (!response.ok) {
-      showError('role-content', 'Failed to load roles', response.data);
+    showLoading(container, 'Loading roles...');
+    
+    try {
+      // Load roles
+      const roles = await client.getRoles();
+      
+      // Get role schema if available
+      let schema = null;
+      try {
+        const schemas = await client.getSchemas();
+        schema = schemas.find(s => s.id === RESOURCE_CONFIG.ROLE.SCHEMA);
+      } catch (error) {
+        console.warn('Failed to load role schema:', error);
+      }
+      
+      // Create and render role list component
+      const roleList = new RoleListComponent(container, roles, (role, action) => {
+        handleRoleAction(role, action, client, container);
+      }, {
+        ...options,
+        schema,
+        client,
+        title: 'Roles',
+        onCreate: () => {
+          if (options.onCreate) {
+            options.onCreate();
+          } else {
+            // Default create handler
+            renderRoleCreateModal(container, async (roleData) => {
+              const result = await client.createRole(roleData);
+              // Re-render the role list after creation
+              await renderRoleList(container, client, options);
+              return result;
+            }, { schema });
+          }
+        },
+        onEdit: (role) => {
+          if (options.onEdit) {
+            options.onEdit(role);
+          }
+        },
+        onViewJSON: (role) => {
+          const roleName = role.displayName || role.id;
+          createJSONViewerModal(container, `Role JSON: ${roleName}`, role);
+        },
+        onDelete: async (role) => {
+          if (options.onDelete) {
+            await options.onDelete(role);
+          } else {
+            await handleRoleDelete(role, client, container);
+          }
+        }
+      });
+      
+      await roleList.render();
+      
+    } catch (error) {
+      // Handle case where Roles endpoint doesn't exist
+      if (error.message && error.message.includes('not found')) {
+        clearElement(container);
+        
+        const message = createElement('div', {
+          className: 'no-roles-message',
+          innerHTML: `
+            <div class="info-box">
+              <h3>Roles Not Available</h3>
+              <p>This SCIM server does not support Roles management.</p>
+              <p>The server may not implement the Roles endpoint or it may be disabled.</p>
+              <p>You can still manage Users, Groups, and Entitlements.</p>
+            </div>
+          `
+        });
+        
+        container.appendChild(message);
+      } else {
+        // Re-throw other errors
+        throw error;
+      }
+    }
+    
+  }, async (error) => {
+    await showError(container, error);
+  });
+}
+
+/**
+ * Handle role actions
+ * @param {Object} role - Role object
+ * @param {string} action - Action type
+ * @param {SCIMClient} client - SCIM client
+ * @param {HTMLElement} container - Container element
+ */
+async function handleRoleAction(role, action, client, container) {
+  return await safeAsync(async () => {
+    switch (action) {
+      case 'edit':
+        // Import and render role edit form
+        const { renderRoleEditForm } = await import('./role-edit-form.js');
+        await renderRoleEditForm(container, role, async (formData) => {
+          return await client.updateRole(formData);
+        });
+        break;
+        
+      case 'delete':
+        await handleRoleDelete(role, client, container);
+        break;
+        
+      default:
+        console.warn('Unknown role action:', action);
+    }
+  }, async (error) => {
+    await showError(container, error);
+  });
+}
+
+/**
+ * Handle role deletion
+ * @param {Object} role - Role object
+ * @param {SCIMClient} client - SCIM client
+ * @param {HTMLElement} container - Container element
+ */
+async function handleRoleDelete(role, client, container) {
+  return await safeAsync(async () => {
+    const roleName = role.displayName || role.id;
+    
+    if (!confirm(`Are you sure you want to delete role "${roleName}"?`)) {
       return;
     }
-
-    const roles = response.data.Resources || [];
-    const totalResults = response.data.totalResults || roles.length;
-    const itemsPerPage = response.data.itemsPerPage || 100;
-
-    // Update stats
-    const statsContainer = document.getElementById('role-stats');
-    statsContainer.innerHTML = `
-      <div class="stat-card">
-        <div class="stat-number">${totalResults}</div>
-        <div class="stat-label">Total Roles</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-number">${roles.length}</div>
-        <div class="stat-label">Loaded</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-number">${itemsPerPage}</div>
-        <div class="stat-label">Per Page</div>
-      </div>
-    `;
-
-    // Render role list
-    const listContainer = document.getElementById('role-list');
-    if (roles.length === 0) {
-      listContainer.innerHTML = `
-        <div class="empty-state">
-          <i class="fas fa-user-tag"></i>
-          <h3>No Roles Found</h3>
-          <p>No roles are currently configured on this SCIM server.</p>
-          <button class="btn btn-primary" onclick="window.createRole()">
-            Create First Role
-          </button>
-        </div>
-      `;
-    } else {
-      listContainer.innerHTML = `
-        <div class="resource-grid">
-          ${roles.map(role => `
-            <div class="resource-card" onclick="window.viewRole('${role.id}')">
-              <div class="resource-header">
-                <h3>${role.displayName || role.id}</h3>
-                <span class="resource-type">${role.type || 'Role'}</span>
-              </div>
-              <div class="resource-body">
-                <p class="resource-description">${role.description || 'No description'}</p>
-                <div class="resource-meta">
-                  <span class="meta-item">
-                    <i class="fas fa-id-badge"></i> ${role.id}
-                  </span>
-                  ${role.active !== undefined ? `
-                    <span class="meta-item ${role.active ? 'active' : 'inactive'}">
-                      <i class="fas fa-circle"></i> ${role.active ? 'Active' : 'Inactive'}
-                    </span>
-                  ` : ''}
-                </div>
-              </div>
-              <div class="resource-actions">
-                <button class="btn btn-sm btn-secondary" onclick="event.stopPropagation(); window.editRole('${role.id}')">
-                  <i class="fas fa-edit"></i> Edit
-                </button>
-                <button class="btn btn-sm btn-danger" onclick="event.stopPropagation(); window.deleteRole('${role.id}')">
-                  <i class="fas fa-trash"></i> Delete
-                </button>
-              </div>
-            </div>
-          `).join('')}
-        </div>
-      `;
-    }
-
-    // Make functions globally available
-    window.viewRole = (id) => {
-      const event = new CustomEvent('navigate', { 
-        detail: { section: 'roles', action: 'view', id } 
-      });
-      document.dispatchEvent(event);
-    };
-
-    window.editRole = (id) => {
-      const event = new CustomEvent('navigate', { 
-        detail: { section: 'roles', action: 'edit', id } 
-      });
-      document.dispatchEvent(event);
-    };
-
-    window.deleteRole = async (id) => {
-      if (!confirm('Are you sure you want to delete this role?')) return;
-      
-      try {
-        const response = await client.deleteRole(id);
-        if (response.ok) {
-          // Refresh the list
-          renderRoleList(container, client, mainPanel, reqResPanel);
-        } else {
-          alert(`Failed to delete role: ${response.data.error || 'Unknown error'}`);
-        }
-      } catch (error) {
-        alert(`Error deleting role: ${error.message}`);
-      }
-    };
-
-    // Show content
-    document.getElementById('role-loading').classList.add('hidden');
-    document.getElementById('role-content').classList.remove('hidden');
-
-    // Update request/response panel
-    if (reqResPanel) {
-      reqResPanel.innerHTML = `
-        <div class="req-res-panel">
-          <h3>Request/Response</h3>
-          <div class="req-res-content">
-            <div class="request-section">
-              <h4>Request</h4>
-              <pre><code>GET ${response.requestInfo.url}</code></pre>
-            </div>
-            <div class="response-section">
-              <h4>Response (${response.status})</h4>
-              <div class="json-viewer" data-json='${JSON.stringify(response.data)}'></div>
-            </div>
-          </div>
-        </div>
-      `;
-      
-      // Initialize JSON viewer
-      if (window.$ && window.$.fn.jsonViewer) {
-        $('.json-viewer').each(function() {
-          $(this).jsonViewer(JSON.parse($(this).attr('data-json')));
-        });
-      }
-    }
-
-  } catch (error) {
-    showError('role-content', 'Failed to load roles', error);
-  }
+    
+    showLoading(container, `Deleting role "${roleName}"...`);
+    
+    await client.deleteRole(role.id);
+    
+    // Re-render the role list
+    await renderRoleList(container, client);
+    
+  }, async (error) => {
+    await showError(container, error);
+  });
 }

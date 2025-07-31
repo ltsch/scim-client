@@ -95,13 +95,42 @@ class SecureCORSProxy(BaseHTTPRequestHandler):
             if not parsed.hostname:
                 return False, "No hostname in URL"
             
-            # Optional: Add domain restrictions here if needed
-            # if not parsed.hostname.endswith('.yourdomain.com'):
-            #     return False, "Domain not allowed"
-            
             return True, None
         except Exception as e:
             return False, f"URL parsing error: {e}"
+    
+    def _extract_target_url(self, path):
+        """Extract target URL from path - only accepts /proxy/ prefix with valid HTTPS URL
+        
+        This function expects paths in the format: /proxy/https://example.com/endpoint
+        It validates that:
+        1. Path starts with /proxy/
+        2. URL after /proxy/ is a valid HTTPS URL
+        3. URL matches the HTTPS regex pattern for security
+        
+        Args:
+            path: The request path (e.g., '/proxy/https://api.example.com/endpoint')
+            
+        Returns:
+            str: The extracted HTTPS URL, or None if validation fails
+        """
+        # Step 1: Check if path starts with /proxy/
+        if not path.startswith('/proxy/'):
+            print(f"[DEBUG] Path does not start with /proxy/: '{path}'", flush=True)
+            return None
+        
+        # Step 2: Extract URL after /proxy/
+        url = path[7:]  # Remove '/proxy/'
+        
+        # Step 3: Validate URL with regex (HTTPS only)
+        import re
+        url_pattern = r'^https:\/\/(?:www\.)?[-a-zA-Z0-9@:%._\+~#=]{1,256}\.[a-zA-Z0-9()]{1,6}\b(?:[-a-zA-Z0-9()@:%_\+.~#?&\/=]*)$'
+        
+        if not re.match(url_pattern, url):
+            print(f"[DEBUG] URL does not match HTTPS pattern: '{url}'", flush=True)
+            return None
+        
+        return url
     
     def _check_content_type(self, content_type):
         """Check if content type is allowed"""
@@ -119,7 +148,8 @@ class SecureCORSProxy(BaseHTTPRequestHandler):
         client_ip = self._get_client_ip()
         
         # Log the request with client info
-        print(f"[{time.strftime('%H:%M:%S')}] Request from {client_ip} - {self.command} {self.path}")
+        print(f"[{time.strftime('%H:%M:%S')}] Request from {client_ip} - {self.command} {self.path}", flush=True)
+        print(f"[{time.strftime('%H:%M:%S')}] Headers: {dict(self.headers)}", flush=True)
         
         # Check IP restrictions
         if not self._is_allowed_ip(client_ip):
@@ -151,14 +181,23 @@ class SecureCORSProxy(BaseHTTPRequestHandler):
             self.wfile.write(error_msg.encode())
             return
         
-        # Remove leading slash and /proxy/ prefix if present
-        url = self.path[1:]  # Remove leading slash
-        if url.startswith('proxy/'):
-            url = url[6:]  # Remove 'proxy/' prefix
+        # Extract target URL from path
+        url = self._extract_target_url(self.path)
+        
+        # Check if URL extraction failed
+        if url is None:
+            print(f"[{time.strftime('%H:%M:%S')}] Failed to extract URL from path: '{self.path}'", flush=True)
+            self.send_response(400)
+            self.send_header('Access-Control-Allow-Origin', '*')
+            self.send_header('Content-Type', 'text/plain')
+            self.end_headers()
+            self.wfile.write(b"Invalid proxy path. Must start with /proxy/ followed by a valid HTTPS URL")
+            return
         
         # Validate target URL
         url_valid, url_error = self._validate_target_url(url)
         if not url_valid:
+            print(f"[{time.strftime('%H:%M:%S')}] URL validation failed: {url_error}")
             self.send_response(400)
             self.send_header('Access-Control-Allow-Origin', '*')
             self.send_header('Content-Type', 'text/plain')
@@ -230,14 +269,23 @@ class SecureCORSProxy(BaseHTTPRequestHandler):
             self.wfile.write(error_msg.encode())
             return
         
-        # Remove leading slash and /proxy/ prefix if present
-        url = self.path[1:]  # Remove leading slash
-        if url.startswith('proxy/'):
-            url = url[6:]  # Remove 'proxy/' prefix
+        # Extract target URL from path
+        url = self._extract_target_url(self.path)
+        
+        # Check if URL extraction failed
+        if url is None:
+            print(f"[{time.strftime('%H:%M:%S')}] Failed to extract URL from path: '{self.path}'", flush=True)
+            self.send_response(400)
+            self.send_header('Access-Control-Allow-Origin', '*')
+            self.send_header('Content-Type', 'text/plain')
+            self.end_headers()
+            self.wfile.write(b"Invalid proxy path. Must start with /proxy/ followed by a valid HTTPS URL")
+            return
         
         # Validate target URL
         url_valid, url_error = self._validate_target_url(url)
         if not url_valid:
+            print(f"[{time.strftime('%H:%M:%S')}] URL validation failed: {url_error}")
             self.send_response(400)
             self.send_header('Access-Control-Allow-Origin', '*')
             self.send_header('Content-Type', 'text/plain')

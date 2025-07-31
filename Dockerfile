@@ -18,11 +18,11 @@ COPY . .
 FROM nginx:alpine AS production
 
 # Install Python and required packages
-RUN apk add --no-cache \
-    python3 \
-    py3-pip \
-    curl \
-    && pip3 install --no-cache-dir --break-system-packages requests==2.32.4
+RUN apk add --no-cache python3 py3-pip curl
+
+# Copy requirements file and install Python dependencies
+COPY requirements.txt /tmp/requirements.txt
+RUN pip3 install --no-cache-dir --break-system-packages -r /tmp/requirements.txt
 
 # Copy nginx configuration
 COPY nginx.conf /etc/nginx/nginx.conf
@@ -37,7 +37,7 @@ COPY simple-cors-proxy.py /usr/local/bin/
 RUN echo '#!/bin/sh' > /usr/local/bin/start.sh && \
     echo 'echo "Starting CORS proxy..."' >> /usr/local/bin/start.sh && \
     echo 'python3 /usr/local/bin/simple-cors-proxy.py &' >> /usr/local/bin/start.sh && \
-    echo 'sleep 2' >> /usr/local/bin/start.sh && \
+    echo 'sleep 3' >> /usr/local/bin/start.sh && \
     echo 'echo "Starting nginx..."' >> /usr/local/bin/start.sh && \
     echo 'nginx -g "daemon off;"' >> /usr/local/bin/start.sh && \
     chmod +x /usr/local/bin/start.sh
@@ -56,9 +56,9 @@ RUN mkdir -p /run/nginx && chown nginx:nginx /run/nginx
 # Expose port
 EXPOSE 80
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
-    CMD wget --no-verbose --tries=1 --spider http://localhost:80/health || exit 1
+# Health check with longer start period and more robust checking
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=5 \
+    CMD curl -f http://localhost:80/health || exit 1
 
 # Default command
 CMD ["/usr/local/bin/start.sh"] 

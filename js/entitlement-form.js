@@ -1,129 +1,402 @@
-// js/entitlement-form.js
+// js/entitlement-form.js - Refactored Entitlement Form Component
 
-import { renderJSON, showLoading, showError } from './ui-components.js';
+import { RESOURCE_CONFIG, UI_CONFIG, FORM_CONFIG } from './config.js';
+import {
+  validateElement,
+  validateRequired,
+  validateFunction,
+  escapeHTML,
+  createElement,
+  addEventListener,
+  clearElement,
+  parseError,
+  safeAsync
+} from './utils.js';
+import { showError, showLoading, showSuccess, renderJSON } from './ui-components.js';
 
-export async function renderEntitlementForm(container, client, mainPanel, reqResPanel) {
-  if (!container) return;
+// ============================================================================
+// ENTITLEMENT FORM COMPONENT
+// ============================================================================
 
-  container.innerHTML = `
-    <div class="section-header">
-      <h2>Create Entitlement</h2>
-      <button class="btn btn-secondary" onclick="window.navigateToEntitlements()">
-        <i class="fas fa-arrow-left"></i> Back to Entitlements
-      </button>
-    </div>
-    <div class="form-container">
-      <form id="entitlement-form" class="resource-form">
-        <div class="form-group">
-          <label for="displayName">Display Name *</label>
-          <input type="text" id="displayName" name="displayName" required 
-                 placeholder="e.g., Office 365 License">
-        </div>
-        
-        <div class="form-group">
-          <label for="type">Type *</label>
-          <select id="type" name="type" required>
-            <option value="">Select type...</option>
-            <option value="License">License</option>
-            <option value="Profile">Profile</option>
-            <option value="Permission">Permission</option>
-            <option value="Application">Application</option>
-          </select>
-        </div>
-        
-        <div class="form-group">
-          <label for="description">Description</label>
-          <textarea id="description" name="description" rows="3" 
-                    placeholder="Description of this entitlement"></textarea>
-        </div>
-        
-        <div class="form-group">
-          <label for="schemas">Schemas</label>
-          <input type="text" id="schemas" name="schemas" 
-                 value="urn:okta:scim:schemas:core:1.0:Entitlement"
-                 placeholder="Schema URN">
-        </div>
-        
-        <div class="form-actions">
-          <button type="submit" class="btn btn-primary">
-            <i class="fas fa-save"></i> Create Entitlement
-          </button>
-          <button type="button" class="btn btn-secondary" onclick="window.navigateToEntitlements()">
-            Cancel
-          </button>
-        </div>
-      </form>
-    </div>
-  `;
-
-  // Make navigation function globally available
-  window.navigateToEntitlements = () => {
+/**
+ * Entitlement form component
+ */
+class EntitlementFormComponent {
+  /**
+   * Create entitlement form component
+   * @param {HTMLElement} container - Container element
+   * @param {Object} client - SCIM client
+   * @param {HTMLElement} mainPanel - Main panel for navigation
+   * @param {HTMLElement} reqResPanel - Request/response panel
+   */
+  constructor(container, client, mainPanel, reqResPanel) {
+    this.container = container;
+    this.client = client;
+    this.mainPanel = mainPanel;
+    this.reqResPanel = reqResPanel;
+    this.form = null;
+    
+    this.validate();
+    this.render();
+    this.bindEvents();
+  }
+  
+  /**
+   * Validate component configuration
+   * @throws {Error} If validation fails
+   */
+  validate() {
+    validateElement(this.container, 'container');
+    validateElement(this.mainPanel, 'mainPanel');
+    
+    if (!this.client) {
+      throw new Error('SCIM client is required');
+    }
+  }
+  
+  /**
+   * Render the form
+   */
+  render() {
+    clearElement(this.container);
+    
+    // Create section header
+    const header = createElement('div', {
+      className: 'section-header'
+    });
+    
+    const title = createElement('h2', {
+      textContent: 'Create Entitlement'
+    });
+    
+    const backBtn = createElement('button', {
+      className: `${UI_CONFIG.CLASSES.BTN} ${UI_CONFIG.CLASSES.BTN_SECONDARY}`,
+      innerHTML: '<i class="fas fa-arrow-left"></i> Back to Entitlements'
+    });
+    
+    header.appendChild(title);
+    header.appendChild(backBtn);
+    this.container.appendChild(header);
+    
+    // Create form container
+    const formContainer = createElement('div', {
+      className: 'form-container'
+    });
+    
+    // Create form
+    this.form = createElement('form', {
+      id: 'entitlement-form',
+      className: 'resource-form'
+    });
+    
+    // Create form fields
+    this.renderFormFields();
+    
+    // Create form actions
+    this.renderFormActions();
+    
+    formContainer.appendChild(this.form);
+    this.container.appendChild(formContainer);
+  }
+  
+  /**
+   * Render form fields
+   */
+  renderFormFields() {
+    // Display Name field
+    const displayNameGroup = createElement('div', {
+      className: UI_CONFIG.CLASSES.FORM_GROUP
+    });
+    
+    const displayNameLabel = createElement('label', {
+      htmlFor: 'displayName',
+      textContent: 'Display Name *'
+    });
+    
+    const displayNameInput = createElement('input', {
+      type: 'text',
+      id: 'displayName',
+      name: 'displayName',
+      required: true,
+      placeholder: 'e.g., Office 365 License',
+      className: UI_CONFIG.CLASSES.FORM_CONTROL
+    });
+    
+    displayNameGroup.appendChild(displayNameLabel);
+    displayNameGroup.appendChild(displayNameInput);
+    this.form.appendChild(displayNameGroup);
+    
+    // Type field
+    const typeGroup = createElement('div', {
+      className: UI_CONFIG.CLASSES.FORM_GROUP
+    });
+    
+    const typeLabel = createElement('label', {
+      htmlFor: 'type',
+      textContent: 'Type *'
+    });
+    
+    const typeSelect = createElement('select', {
+      id: 'type',
+      name: 'type',
+      required: true,
+      className: UI_CONFIG.CLASSES.FORM_CONTROL
+    });
+    
+    const defaultOption = createElement('option', {
+      value: '',
+      textContent: 'Select type...'
+    });
+    typeSelect.appendChild(defaultOption);
+    
+    const typeOptions = ['License', 'Profile', 'Permission', 'Application'];
+    typeOptions.forEach(option => {
+      const optionElement = createElement('option', {
+        value: option,
+        textContent: option
+      });
+      typeSelect.appendChild(optionElement);
+    });
+    
+    typeGroup.appendChild(typeLabel);
+    typeGroup.appendChild(typeSelect);
+    this.form.appendChild(typeGroup);
+    
+    // Description field
+    const descriptionGroup = createElement('div', {
+      className: UI_CONFIG.CLASSES.FORM_GROUP
+    });
+    
+    const descriptionLabel = createElement('label', {
+      htmlFor: 'description',
+      textContent: 'Description'
+    });
+    
+    const descriptionTextarea = createElement('textarea', {
+      id: 'description',
+      name: 'description',
+      rows: '3',
+      placeholder: 'Description of this entitlement',
+      className: UI_CONFIG.CLASSES.FORM_CONTROL
+    });
+    
+    descriptionGroup.appendChild(descriptionLabel);
+    descriptionGroup.appendChild(descriptionTextarea);
+    this.form.appendChild(descriptionGroup);
+    
+    // Schemas field
+    const schemasGroup = createElement('div', {
+      className: UI_CONFIG.CLASSES.FORM_GROUP
+    });
+    
+    const schemasLabel = createElement('label', {
+      htmlFor: 'schemas',
+      textContent: 'Schemas'
+    });
+    
+    const schemasInput = createElement('input', {
+      type: 'text',
+      id: 'schemas',
+      name: 'schemas',
+      value: 'urn:okta:scim:schemas:core:1.0:Entitlement',
+      placeholder: 'Schema URN',
+      className: UI_CONFIG.CLASSES.FORM_CONTROL
+    });
+    
+    schemasGroup.appendChild(schemasLabel);
+    schemasGroup.appendChild(schemasInput);
+    this.form.appendChild(schemasGroup);
+  }
+  
+  /**
+   * Render form actions
+   */
+  renderFormActions() {
+    const actionsGroup = createElement('div', {
+      className: 'form-actions'
+    });
+    
+    const submitBtn = createElement('button', {
+      type: 'submit',
+      className: `${UI_CONFIG.CLASSES.BTN} ${UI_CONFIG.CLASSES.BTN_PRIMARY}`,
+      innerHTML: '<i class="fas fa-save"></i> Create Entitlement'
+    });
+    
+    const cancelBtn = createElement('button', {
+      type: 'button',
+      className: `${UI_CONFIG.CLASSES.BTN} ${UI_CONFIG.CLASSES.BTN_SECONDARY}`,
+      textContent: 'Cancel'
+    });
+    
+    actionsGroup.appendChild(submitBtn);
+    actionsGroup.appendChild(cancelBtn);
+    this.form.appendChild(actionsGroup);
+  }
+  
+  /**
+   * Bind form events
+   */
+  bindEvents() {
+    // Form submission
+    addEventListener(this.form, 'submit', (e) => {
+      e.preventDefault();
+      this.handleSubmit();
+    });
+    
+    // Back button
+    const backBtn = this.container.querySelector('.section-header button');
+    addEventListener(backBtn, 'click', () => {
+      this.navigateToEntitlements();
+    });
+    
+    // Cancel button
+    const cancelBtn = this.form.querySelector('.form-actions button:last-child');
+    addEventListener(cancelBtn, 'click', () => {
+      this.navigateToEntitlements();
+    });
+  }
+  
+  /**
+   * Navigate to entitlements section
+   */
+  navigateToEntitlements() {
     const event = new CustomEvent('navigate', { 
       detail: { section: 'entitlements' } 
     });
     document.dispatchEvent(event);
-  };
-
-  // Handle form submission
-  document.getElementById('entitlement-form').addEventListener('submit', async (e) => {
-    e.preventDefault();
-    
-    const formData = new FormData(e.target);
-    const entitlementData = {
-      schemas: [formData.get('schemas') || 'urn:okta:scim:schemas:core:1.0:Entitlement'],
-      displayName: formData.get('displayName'),
-      type: formData.get('type'),
-      description: formData.get('description') || undefined
-    };
-
-    // Remove undefined values
-    Object.keys(entitlementData).forEach(key => {
-      if (entitlementData[key] === undefined) {
-        delete entitlementData[key];
-      }
-    });
-
-    try {
-      showLoading('entitlement-form', null);
+  }
+  
+  /**
+   * Handle form submission
+   */
+  async handleSubmit() {
+    return await safeAsync(async () => {
+      const formData = new FormData(this.form);
+      const entitlementData = {
+        schemas: [formData.get('schemas') || 'urn:okta:scim:schemas:core:1.0:Entitlement'],
+        displayName: formData.get('displayName'),
+        type: formData.get('type'),
+        description: formData.get('description') || undefined
+      };
       
-      const response = await client.createEntitlement(entitlementData);
+      // Remove undefined values
+      Object.keys(entitlementData).forEach(key => {
+        if (entitlementData[key] === undefined) {
+          delete entitlementData[key];
+        }
+      });
+      
+      // Show loading state
+      showLoading(this.form, 'Creating entitlement...');
+      
+      // Create entitlement
+      const response = await this.client.createEntitlement(entitlementData);
       
       if (response.ok) {
-        alert('Entitlement created successfully!');
-        window.navigateToEntitlements();
+        showSuccess(this.container, 'Entitlement created successfully!');
+        this.navigateToEntitlements();
       } else {
-        showError('entitlement-form', 'Failed to create entitlement', response.data);
+        await showError(this.form, 'Failed to create entitlement', response.data);
       }
-
+      
       // Update request/response panel
-      if (reqResPanel) {
-        reqResPanel.innerHTML = `
-          <div class="req-res-panel">
-            <h3>Request/Response</h3>
-            <div class="req-res-content">
-              <div class="request-section">
-                <h4>Request</h4>
-                <pre><code>POST ${response.requestInfo.url}</code></pre>
-                <div class="json-viewer" data-json='${JSON.stringify(entitlementData)}'></div>
-              </div>
-              <div class="response-section">
-                <h4>Response (${response.status})</h4>
-                <div class="json-viewer" data-json='${JSON.stringify(response.data)}'></div>
-              </div>
-            </div>
-          </div>
-        `;
-        
-        // Initialize JSON viewer
-        if (window.$ && window.$.fn.jsonViewer) {
-          $('.json-viewer').each(function() {
-            $(this).jsonViewer(JSON.parse($(this).attr('data-json')));
-          });
-        }
+      if (this.reqResPanel) {
+        this.updateReqResPanel(response, entitlementData);
       }
-
-    } catch (error) {
-      showError('entitlement-form', 'Error creating entitlement', error);
+      
+    }, async (error) => {
+      await showError(this.form, 'Error creating entitlement', error);
+    });
+  }
+  
+  /**
+   * Update request/response panel
+   * @param {Object} response - Response object
+   * @param {Object} entitlementData - Entitlement data
+   */
+  updateReqResPanel(response, entitlementData) {
+    clearElement(this.reqResPanel);
+    
+    const reqResPanel = createElement('div', {
+      className: 'req-res-panel'
+    });
+    
+    const title = createElement('h3', {
+      textContent: 'Request/Response'
+    });
+    
+    const content = createElement('div', {
+      className: 'req-res-content'
+    });
+    
+    // Request section
+    const requestSection = createElement('div', {
+      className: 'request-section'
+    });
+    
+    const requestTitle = createElement('h4', {
+      textContent: 'Request'
+    });
+    
+    const requestUrl = createElement('pre', {
+      innerHTML: `<code>POST ${response.requestInfo?.url || 'N/A'}</code>`
+    });
+    
+    const requestData = createElement('div', {
+      className: UI_CONFIG.CLASSES.JSON_VIEWER,
+      'data-json': JSON.stringify(entitlementData)
+    });
+    
+    requestSection.appendChild(requestTitle);
+    requestSection.appendChild(requestUrl);
+    requestSection.appendChild(requestData);
+    
+    // Response section
+    const responseSection = createElement('div', {
+      className: 'response-section'
+    });
+    
+    const responseTitle = createElement('h4', {
+      textContent: `Response (${response.status || 'N/A'})`
+    });
+    
+    const responseData = createElement('div', {
+      className: UI_CONFIG.CLASSES.JSON_VIEWER,
+      'data-json': JSON.stringify(response.data || {})
+    });
+    
+    responseSection.appendChild(responseTitle);
+    responseSection.appendChild(responseData);
+    
+    content.appendChild(requestSection);
+    content.appendChild(responseSection);
+    
+    reqResPanel.appendChild(title);
+    reqResPanel.appendChild(content);
+    this.reqResPanel.appendChild(reqResPanel);
+    
+    // Initialize JSON viewer if available
+    if (window.$ && window.$.fn.jsonViewer) {
+      $('.json-viewer').each(function() {
+        $(this).jsonViewer(JSON.parse($(this).attr('data-json')));
+      });
     }
-  });
+  }
+}
+
+// ============================================================================
+// MAIN EXPORT FUNCTION
+// ============================================================================
+
+/**
+ * Render entitlement form
+ * @param {HTMLElement} container - Container element
+ * @param {Object} client - SCIM client
+ * @param {HTMLElement} mainPanel - Main panel for navigation
+ * @param {HTMLElement} reqResPanel - Request/response panel
+ */
+export async function renderEntitlementForm(container, client, mainPanel, reqResPanel) {
+  if (!container) return;
+  
+  return new EntitlementFormComponent(container, client, mainPanel, reqResPanel);
 }

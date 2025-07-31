@@ -3,13 +3,10 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
-  <meta http-equiv="Pragma" content="no-cache">
-  <meta http-equiv="Expires" content="0">
   <title>SCIM Client Test Harness</title>
-  <link rel="stylesheet" href="css/main.css?v=2">
-  <link rel="stylesheet" href="css/components.css?v=2">
-  <link rel="stylesheet" href="css/accessibility.css?v=2">
+  <link rel="stylesheet" href="css/main.css?v=11">
+  <link rel="stylesheet" href="css/components.css?v=11">
+  <link rel="stylesheet" href="css/accessibility.css?v=11">
   <link rel="stylesheet" href="vendor/jquery-jsonview/jquery.jsonview.min.css">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
 </head>
@@ -18,7 +15,22 @@
   <a href="#app" class="skip-link">Skip to main content</a>
   
   <!-- Root container for the SCIM client app -->
-  <div id="app"></div>
+  <div id="app">
+    <div class="app-layout">
+      <div class="topnav">
+        <nav class="sidebar-nav">
+          <button class="sidebar-btn active" data-section="User">User</button>
+          <button class="sidebar-btn" data-section="Group">Group</button>
+          <button class="sidebar-btn" data-section="Role">Role</button>
+          <button class="sidebar-btn" data-section="Entitlement">Entitlement</button>
+          <button class="sidebar-btn" data-section="config">Server Config</button>
+          <button class="sidebar-btn" data-section="settings">Settings</button>
+          <button class="sidebar-btn" data-section="logs">Logs</button>
+        </nav>
+      </div>
+      <div class="main-panel" id="main-panel"></div>
+    </div>
+  </div>
 
   <!-- Main application script -->
   <script type="module" src="js/app.js"></script>
