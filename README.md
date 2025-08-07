@@ -1,6 +1,11 @@
-# SCIM Client - Unified Component Architecture
+# Standards Based Single Page Application SCIM Client (SBSPASCIMC) 
 
-A modern, maintainable SCIM 2.0 client for testing and development with a unified component system.
+I wanted a simple web interface for browsing SCIM servers, so I used AI tools to write this frontend.
+
+**This project primarily contains AI generated code, with some pieces I had to do because the AI was incapable of figuring it out.**
+- I am a strong believer that AI generated images, code, writing, and everything else should be called out.
+- Full disclosure: I am completely inept at frontend code.
+- Yes, the AI also wrote the documentation (ain't got time for that)
 
 ## What This Is
 
