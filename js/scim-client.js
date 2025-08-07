@@ -681,8 +681,7 @@ export class SCIMClient {
       // Prepare request options
       const options = {
         method: method.toUpperCase(),
-        headers: this.config.getHeaders(),
-        timeout: this.config.timeout
+        headers: this.config.getHeaders()
       };
 
       // Add body for non-GET requests
@@ -693,8 +692,14 @@ export class SCIMClient {
       // Create request log entry
       const requestLog = createRequestLog(method, url, options);
 
-      // Make request
-      const response = await fetch(url, options);
+      // Implement timeout using AbortController
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), this.config.timeout);
+      
+      try {
+        // Make request with timeout
+        const response = await fetch(url, { ...options, signal: controller.signal });
+        clearTimeout(timeoutId);
       
       // Parse response body
       let responseBody;
@@ -706,7 +711,7 @@ export class SCIMClient {
         const contentLength = response.headers.get('content-length');
         if (contentLength === '0' || response.status === 204) {
           responseBody = null;
-        } else if (contentType && contentType.includes('application/json')) {
+        } else if (contentType && (contentType.includes('application/json') || contentType.includes('application/scim+json'))) {
           try {
             responseBody = await response.json();
           } catch (error) {
@@ -748,6 +753,14 @@ export class SCIMClient {
 
       // Return response body (null for successful DELETE requests is fine)
       return responseBody;
+      
+      } catch (error) {
+        clearTimeout(timeoutId);
+        if (error.name === 'AbortError') {
+          throw new SCIMNetworkError('Request timeout', 0, { timeout: this.config.timeout });
+        }
+        throw error;
+      }
     });
   }
 }

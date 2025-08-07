@@ -33,7 +33,7 @@ export const APP_CONFIG = {
   
   // API settings
   API: {
-    TIMEOUT_MS: 30000,
+    TIMEOUT_MS: 60000, // Increased from 30s to 60s for schema detection
     DEFAULT_HEADERS: {
       'Accept': 'application/scim+json',
       'Content-Type': 'application/scim+json'
