@@ -9,7 +9,7 @@ WORKDIR /app
 COPY package*.json ./
 
 # Install dependencies (production only, exclude dev dependencies like Playwright)
-RUN npm ci --only=production
+RUN npm install --omit=dev
 
 # Copy source files
 COPY . .
@@ -29,6 +29,9 @@ COPY nginx.conf /etc/nginx/nginx.conf
 
 # Copy built files from builder stage
 COPY --from=builder /app /usr/share/nginx/html
+
+# Copy allowlist file so both SPA and proxy can read it
+COPY allowed-targets.json /usr/share/nginx/html/allowed-targets.json
 
 # Copy Python CORS proxy script
 COPY simple-cors-proxy.py /usr/local/bin/

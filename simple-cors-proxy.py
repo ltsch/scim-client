@@ -5,6 +5,8 @@
 from http.server import BaseHTTPRequestHandler
 from socketserver import ThreadingTCPServer
 import requests
+import json
+import os
 import time
 import ipaddress
 import re
@@ -34,6 +36,37 @@ class SecureCORSProxy(BaseHTTPRequestHandler):
     # Rate limiting (requests per minute per IP)
     RATE_LIMIT = 60
     rate_limit_store = {}
+
+    # Allowed target patterns (domains, wildcards, IPs, CIDRs)
+    ALLOWED_TARGET_PATTERNS = []
+
+    @classmethod
+    def load_allowed_targets(cls, path_candidates=None):
+        """Load allowed targets JSON from first existing path.
+
+        Expected JSON structure: { "allowed_targets": ["*.example.com", "10.0.0.0/8", "localhost"] }
+        """
+        default_candidates = [
+            # Inside container, static assets are under nginx html root
+            '/usr/share/nginx/html/allowed-targets.json',
+            # Fallback to working directory (for local dev)
+            os.path.join(os.getcwd(), 'allowed-targets.json')
+        ]
+        candidates = path_candidates or default_candidates
+        for candidate in candidates:
+            try:
+                if os.path.exists(candidate):
+                    with open(candidate, 'r', encoding='utf-8') as f:
+                        data = json.load(f)
+                        patterns = data.get('allowed_targets', [])
+                        if isinstance(patterns, list):
+                            cls.ALLOWED_TARGET_PATTERNS = [str(p).strip() for p in patterns if str(p).strip()]
+                            print(f"[ALLOWED] Loaded {len(cls.ALLOWED_TARGET_PATTERNS)} target patterns from {candidate}")
+                            return
+            except Exception as e:
+                print(f"[ALLOWED] Failed to load from {candidate}: {e}")
+        # If nothing loaded, keep empty list (deny-all) and log
+        print("[ALLOWED] No allowlist loaded; all proxy targets will be denied")
     
     def _get_client_ip(self):
         """Extract real client IP from forwarded headers"""
@@ -98,6 +131,55 @@ class SecureCORSProxy(BaseHTTPRequestHandler):
             return True, None
         except Exception as e:
             return False, f"URL parsing error: {e}"
+
+    def _is_target_allowed(self, url):
+        """Check if the target URL's hostname is allowed by configured patterns.
+
+        Supports:
+          - Exact hostnames (e.g., example.com)
+          - Wildcards (e.g., *.example.com)
+          - IP addresses
+          - CIDR ranges (IPv4/IPv6)
+        """
+        try:
+            parsed = urlparse(url)
+            host = parsed.hostname or ''
+            if not host:
+                return False
+
+            # If no patterns configured, deny
+            patterns = self.ALLOWED_TARGET_PATTERNS or []
+            if not patterns:
+                return False
+
+            # Utility: IP matching via ipaddress
+            def ip_in_cidr(host_ip, cidr):
+                try:
+                    ip_obj = ipaddress.ip_address(host_ip)
+                    net = ipaddress.ip_network(cidr, strict=False)
+                    return ip_obj in net
+                except Exception:
+                    return False
+
+            # Utility: simple wildcard match
+            def host_matches_pattern(h, pat):
+                pat = pat.lower()
+                h = h.lower()
+                if '/' in pat:
+                    # CIDR pattern
+                    return ip_in_cidr(h, pat)
+                if pat.startswith('*.'):
+                    base = pat[2:]
+                    return h == base or h.endswith('.' + base)
+                return h == pat
+
+            # Iterate patterns; allow if any match
+            for pat in patterns:
+                if host_matches_pattern(host, pat):
+                    return True
+            return False
+        except Exception:
+            return False
     
     def _extract_target_url(self, path):
         """Extract target URL from path - only accepts /proxy/ prefix with valid HTTPS URL
@@ -204,17 +286,34 @@ class SecureCORSProxy(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(url_error.encode())
             return
+
+        # Enforce target allowlist
+        if not self._is_target_allowed(url):
+            print(f"[{time.strftime('%H:%M:%S')}] Blocked target host (not allowed): {url}")
+            self.send_response(403)
+            self.send_header('Access-Control-Allow-Origin', '*')
+            self.send_header('Content-Type', 'application/json')
+            self.end_headers()
+            self.wfile.write(b'{"detail":"Target host not allowed by proxy policy"}')
+            return
         
         start_time = time.time()
         print(f"[{time.strftime('%H:%M:%S')}] GET {url}")
         try:
-            # Forward relevant headers
+            # Forward relevant headers (case-insensitive retrieval)
             headers = {}
-            for h in ['Authorization', 'Accept', 'Content-Type', 'User-Agent', 'If-Match', 'If-None-Match']:
-                if h in self.headers:
-                    headers[h] = self.headers[h]
+            forward_list = ['Authorization', 'Accept', 'Content-Type', 'User-Agent', 'If-Match', 'If-None-Match', 'Origin', 'Referer']
+            for h in forward_list:
+                v = self.headers.get(h)
+                if v is not None:
+                    headers[h] = v
+            # Debug which headers are forwarded (do not print sensitive values)
+            print(f"[{time.strftime('%H:%M:%S')}] Forwarding headers: {', '.join(sorted(headers.keys()))}")
+
             print(f"[{time.strftime('%H:%M:%S')}] Making request to {url}")
-            resp = requests.get(url, headers=headers, allow_redirects=True, timeout=25)
+
+            # Preserve Authorization across redirects by handling redirects manually
+            resp = self._forward_with_redirects('GET', url, headers=headers, data=None)
             elapsed = time.time() - start_time
             print(f"[{time.strftime('%H:%M:%S')}] Response {resp.status_code} in {elapsed:.2f}s")
             self.send_response(resp.status_code)
@@ -292,18 +391,32 @@ class SecureCORSProxy(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(url_error.encode())
             return
+
+        # Enforce target allowlist
+        if not self._is_target_allowed(url):
+            print(f"[{time.strftime('%H:%M:%S')}] Blocked target host (not allowed): {url}")
+            self.send_response(403)
+            self.send_header('Access-Control-Allow-Origin', '*')
+            self.send_header('Content-Type', 'application/json')
+            self.end_headers()
+            self.wfile.write(b'{"detail":"Target host not allowed by proxy policy"}')
+            return
         
         start_time = time.time()
         print(f"[{time.strftime('%H:%M:%S')}] {method} {url}")
         try:
             headers = {}
-            for h in ['Authorization', 'Accept', 'Content-Type', 'User-Agent', 'If-Match', 'If-None-Match']:
-                if h in self.headers:
-                    headers[h] = self.headers[h]
+            forward_list = ['Authorization', 'Accept', 'Content-Type', 'User-Agent', 'If-Match', 'If-None-Match', 'Origin', 'Referer']
+            for h in forward_list:
+                v = self.headers.get(h)
+                if v is not None:
+                    headers[h] = v
             length = int(self.headers.get('Content-Length', 0))
             data = self.rfile.read(length) if length > 0 else None
             print(f"[{time.strftime('%H:%M:%S')}] Making {method} request to {url}")
-            resp = requests.request(method, url, headers=headers, data=data, allow_redirects=True, timeout=25)
+
+            # Preserve Authorization across redirects by handling redirects manually
+            resp = self._forward_with_redirects(method, url, headers=headers, data=data)
             elapsed = time.time() - start_time
             print(f"[{time.strftime('%H:%M:%S')}] Response {resp.status_code} in {elapsed:.2f}s")
             self.send_response(resp.status_code)
@@ -321,10 +434,50 @@ class SecureCORSProxy(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(str(e).encode())
 
+    def _forward_with_redirects(self, method, url, headers=None, data=None, max_redirects=5):
+        """Forward a request while preserving critical headers like Authorization across redirects.
+
+        For 307/308, the original method and body are preserved.
+        For 301/302/303, switch to GET per RFC when the original method is not GET.
+        Relative redirect locations are resolved against the current URL.
+        """
+        session = requests.Session()
+        current_url = url
+        current_method = method.upper()
+        current_data = data
+        redirects = 0
+
+        while True:
+            resp = session.request(current_method, current_url, headers=headers, data=current_data,
+                                   allow_redirects=False, timeout=25)
+
+            if resp.is_redirect or resp.status_code in (301, 302, 303, 307, 308):
+                location = resp.headers.get('Location')
+                if not location:
+                    return resp
+
+                # Resolve relative URLs
+                current_url = requests.compat.urljoin(current_url, location)
+                redirects += 1
+
+                # Adjust method per RFC
+                if resp.status_code in (301, 302, 303) and current_method != 'GET':
+                    current_method = 'GET'
+                    current_data = None
+
+                if redirects > max_redirects:
+                    return resp
+                # Loop to follow next redirect, preserving headers (incl. Authorization)
+                continue
+
+            return resp
+
 if __name__ == '__main__':
     import os
     port = int(os.environ.get('CORS_PROXY_PORT', 8002))
     print(f'Secure multi-threaded Python CORS proxy running on http://localhost:{port}')
     print(f'Security features: IP validation, rate limiting, content-type restrictions')
+    # Load allowed target patterns
+    SecureCORSProxy.load_allowed_targets()
     server = ThreadingTCPServer(('0.0.0.0', port), SecureCORSProxy)
     server.serve_forever() 

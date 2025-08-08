@@ -13,7 +13,9 @@ import {
   requestLogger,
   createRequestLog,
   createResponseLog,
-  parseSCIMError
+  parseSCIMError,
+  loadAllowedTargets,
+  isHostAllowedByPatterns
 } from './utils.js';
 
 // ============================================================================
@@ -676,6 +678,18 @@ export class SCIMClient {
         // nginx routes /proxy/ to the Python CORS proxy at 127.0.0.1:8002
         // The Python proxy expects the raw URL, not URL-encoded
         url = this.config.proxyUrl + '/' + url;
+      }
+
+      // Enforce frontend allowlist check against target hostname
+      try {
+        const targetUrl = new URL(this.config.endpoint);
+        const allowed = await loadAllowedTargets();
+        if (!isHostAllowedByPatterns(targetUrl.hostname, allowed)) {
+          throw new SCIMValidationError('Target host is not allowed by client policy');
+        }
+      } catch (e) {
+        if (e instanceof SCIMValidationError) throw e;
+        // If URL parsing fails, fall back to existing validation
       }
 
       // Prepare request options

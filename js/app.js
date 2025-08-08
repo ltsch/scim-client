@@ -13,7 +13,9 @@ import {
   saveToStorage,
   loadFromStorage,
   debounce,
-  fetchSchemaForResource
+  fetchSchemaForResource,
+  loadAllowedTargets,
+  isHostAllowedByPatterns
 } from './utils.js';
 import { showError, showLoading, showSuccess, createRequestLogsViewer, renderJSON, createAccordion } from './ui-components.js';
 import { SCIMClient } from './scim-client.js';
@@ -821,6 +823,24 @@ class SectionRenderer {
     const useProxy = formData.get('useProxy') === 'on';
     const proxyUrl = formData.get('proxyUrl') || '/proxy'; // Get proxy URL, default to /proxy
     
+    // Enforce allowlist on endpoint host before saving
+    try {
+      const u = new URL(endpoint);
+      // load and check synchronously via async IIFE
+      (async () => {
+        const allowed = await loadAllowedTargets();
+        if (!isHostAllowedByPatterns(u.hostname, allowed)) {
+          throw new Error('SCIM endpoint host is not allowed by policy');
+        }
+      })().catch(err => { throw err; });
+    } catch (err) {
+      showError(document.getElementById('main-panel'), {
+        message: 'Endpoint not allowed',
+        details: (err && err.message) || 'Host not in allowlist'
+      });
+      return;
+    }
+
     saveToStorage(APP_CONFIG.STORAGE_KEYS.ENDPOINT, endpoint);
     saveToStorage(APP_CONFIG.STORAGE_KEYS.API_KEY, apiKey);
     saveToStorage(APP_CONFIG.STORAGE_KEYS.USE_PROXY, useProxy.toString());

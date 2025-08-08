@@ -664,6 +664,49 @@ export function loadFromStorage(key, defaultValue = null) {
   }
 }
 
+// =========================================================================
+// ALLOWED TARGETS (Shared allowlist for SPA and Proxy)
+// =========================================================================
+
+/**
+ * Load allowed targets from baked JSON file in the web root
+ * @returns {Promise<Array<string>>} Array of allowed patterns
+ */
+export async function loadAllowedTargets() {
+  try {
+    const res = await fetch('allowed-targets.json', { cache: 'no-store' });
+    if (!res.ok) return [];
+    const data = await res.json();
+    return Array.isArray(data.allowed_targets) ? data.allowed_targets : [];
+  } catch (e) {
+    return [];
+  }
+}
+
+/**
+ * Check if hostname matches a list of patterns (exact, wildcard, CIDR ignored in frontend)
+ * Note: CIDR evaluation is enforced in the proxy; frontend ignores CIDR for simplicity.
+ * @param {string} hostname
+ * @param {Array<string>} patterns
+ */
+export function isHostAllowedByPatterns(hostname, patterns) {
+  if (!hostname || !Array.isArray(patterns) || patterns.length === 0) return false;
+  const h = String(hostname).toLowerCase();
+  for (const raw of patterns) {
+    const pat = String(raw).toLowerCase().trim();
+    if (!pat) continue;
+    // Skip CIDR patterns in frontend (proxy enforces)
+    if (pat.includes('/')) continue;
+    if (pat.startsWith('*.')) {
+      const base = pat.slice(2);
+      if (h === base || h.endsWith('.' + base)) return true;
+    } else if (h === pat) {
+      return true;
+    }
+  }
+  return false;
+}
+
 /**
  * Remove data from localStorage safely
  * @param {string} key - Storage key

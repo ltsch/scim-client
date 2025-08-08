@@ -6,7 +6,7 @@ services:
       target: production
     container_name: scim-client
     ports:
-      - "8001:80"
+      - "6060:80"
     environment:
       - SCIM_ENDPOINT=${SCIM_ENDPOINT:-https://localhost:7001/scim/v2}
       - SCIM_API_KEY=${SCIM_API_KEY:-}
