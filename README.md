@@ -28,6 +28,11 @@ I wanted a simple web interface for browsing SCIM servers, so I used AI tools to
 
 ## Architecture
 
+### Single Page Application
+- **Host anywhere**: Host these files somewhere and you should be good to go.
+- **API Keys in browser storage**: If you do not use the CORS proxy then no sensitive data ever traverses the server.
+- **CORS Proxy**: A very simple CORS proxy written in python is included. This is optional but you will need it for public SCIM servers.
+
 ### Unified Component System
 - **Centralized Configuration**: Single source of truth for all settings (`config.js`)
 - **Shared Utilities**: Common functionality centralized (`utils.js`)
@@ -48,6 +53,17 @@ I wanted a simple web interface for browsing SCIM servers, so I used AI tools to
 
 ## Getting Started
 
+### Just the SPA
+
+Use whatever you want to serve the HTML and JS:
+- python3 -m http.server
+- Apache
+- nginx
+- Caddy
+- Lighttpd
+
+### Docker container with CORS proxy
+
 1. **Start the container**:
    ```bash
    docker-compose up -d
@@ -55,10 +71,10 @@ I wanted a simple web interface for browsing SCIM servers, so I used AI tools to
 
 2. **Visit the app**:
    ```
-   http://localhost:8001
+   http://dockerip:8001
    ```
 
-3. **Configure SCIM endpoint**:
+**Configure SCIM endpoint**:
    - Go to Settings
    - Enter your SCIM endpoint URL
    - Enter your API key
@@ -68,6 +84,8 @@ I wanted a simple web interface for browsing SCIM servers, so I used AI tools to
 ## CORS Proxy Configuration
 
 The application includes a built-in CORS proxy for development and testing:
+
+### ###DO NOT EXPOSE THE CORS PROXY TO THE INTERNET. JUST DON'T.### 
 
 ### How It Works
 - **Nginx Configuration**: Routes `/proxy/` requests to Python proxy
