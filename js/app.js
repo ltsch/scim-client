@@ -756,6 +756,12 @@ class SectionRenderer {
           <small>Default: /proxy (local proxy) or specify external proxy URL</small>
         </div>
         
+        <div class="${UI_CONFIG.CLASSES.FORM_GROUP}">
+          <label for="custom-headers" class="${UI_CONFIG.CLASSES.FORM_LABEL}">Custom Headers (JSON)</label>
+          <textarea id="custom-headers" name="customHeaders" class="${UI_CONFIG.CLASSES.FORM_CONTROL}" rows="4" placeholder='{"X-Custom-Header": "value", "X-Another-Header": "another-value"}'></textarea>
+          <small>Optional: Add custom headers as JSON object. Example: {"X-Cerby-Base-Url": "http://localhost:8000/api/v1"}</small>
+        </div>
+        
         <div class="form-actions">
           <button type="submit" class="${UI_CONFIG.CLASSES.BTN} ${UI_CONFIG.CLASSES.BTN_PRIMARY}">Save Settings</button>
           <button type="button" id="clear-cache" class="${UI_CONFIG.CLASSES.BTN} ${UI_CONFIG.CLASSES.BTN_SECONDARY}">Clear Cache</button>
@@ -777,16 +783,19 @@ class SectionRenderer {
     const apiKey = loadFromStorage(APP_CONFIG.STORAGE_KEYS.API_KEY, '');
     const useProxy = loadFromStorage(APP_CONFIG.STORAGE_KEYS.USE_PROXY, 'false') === 'true';
     const proxyUrl = loadFromStorage(APP_CONFIG.STORAGE_KEYS.PROXY_URL, '/proxy');
+    const customHeaders = loadFromStorage(APP_CONFIG.STORAGE_KEYS.CUSTOM_HEADERS, '');
     
     const endpointInput = document.getElementById('endpoint');
     const apiKeyInput = document.getElementById('api-key');
     const useProxyInput = document.getElementById('use-proxy');
     const proxyUrlInput = document.getElementById('proxy-url');
+    const customHeadersInput = document.getElementById('custom-headers');
     
     if (endpointInput) endpointInput.value = endpoint;
     if (apiKeyInput) apiKeyInput.value = apiKey;
     if (useProxyInput) useProxyInput.checked = useProxy;
     if (proxyUrlInput) proxyUrlInput.value = proxyUrl;
+    if (customHeadersInput) customHeadersInput.value = customHeaders;
   }
 
   /**
@@ -822,6 +831,7 @@ class SectionRenderer {
     const apiKey = formData.get('apiKey');
     const useProxy = formData.get('useProxy') === 'on';
     const proxyUrl = formData.get('proxyUrl') || '/proxy'; // Get proxy URL, default to /proxy
+    const customHeaders = formData.get('customHeaders') || '';
     
     // Enforce allowlist on endpoint host before saving
     try {
@@ -845,6 +855,7 @@ class SectionRenderer {
     saveToStorage(APP_CONFIG.STORAGE_KEYS.API_KEY, apiKey);
     saveToStorage(APP_CONFIG.STORAGE_KEYS.USE_PROXY, useProxy.toString());
     saveToStorage(APP_CONFIG.STORAGE_KEYS.PROXY_URL, proxyUrl); // Save proxy URL
+    saveToStorage(APP_CONFIG.STORAGE_KEYS.CUSTOM_HEADERS, customHeaders);
     
     // Update SCIM client configuration
     if (this.appState.scimClient) {
@@ -852,9 +863,25 @@ class SectionRenderer {
       this.appState.scimClient.config.updateApiKey(apiKey);
       this.appState.scimClient.config.updateUseProxy(useProxy);
       this.appState.scimClient.config.updateProxyUrl(proxyUrl); // Update proxy URL
+      this.appState.scimClient.config.updateCustomHeaders(this._parseCustomHeaders(customHeaders));
     }
     
     showSuccess(document.getElementById('main-panel'), 'Settings saved successfully');
+  }
+
+  /**
+   * Parse custom headers from JSON string
+   * @param {string} headersJson - JSON string of custom headers
+   * @returns {Object} Parsed headers object
+   */
+  _parseCustomHeaders(headersJson) {
+    if (!headersJson || !headersJson.trim()) return {};
+    try {
+      return JSON.parse(headersJson);
+    } catch (error) {
+      console.warn('Failed to parse custom headers:', error);
+      return {};
+    }
   }
 
   /**
@@ -863,7 +890,7 @@ class SectionRenderer {
   clearCache() {
     // Clear all storage except endpoint, API key, and proxy setting
     Object.keys(localStorage).forEach(key => {
-      if (!key.includes('endpoint') && !key.includes('api_key') && !key.includes('proxy')) {
+      if (!key.includes('endpoint') && !key.includes('api_key') && !key.includes('proxy') && !key.includes('custom_headers')) {
         localStorage.removeItem(key);
       }
     });

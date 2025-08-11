@@ -70,6 +70,7 @@ export class SCIMConfig {
     this.apiKey = this._getStorageItem(APP_CONFIG.STORAGE_KEYS.API_KEY) || '';
     this.useProxy = this._getStorageItem(APP_CONFIG.STORAGE_KEYS.USE_PROXY) === 'true';
     this.proxyUrl = this._getStorageItem(APP_CONFIG.STORAGE_KEYS.PROXY_URL) || '/proxy';
+    this.customHeaders = this._parseCustomHeaders(this._getStorageItem(APP_CONFIG.STORAGE_KEYS.CUSTOM_HEADERS));
     this.timeout = APP_CONFIG.API.TIMEOUT_MS;
   }
 
@@ -89,6 +90,35 @@ export class SCIMConfig {
    */
   _setStorageItem(key, value) {
     saveToStorage(key, value);
+  }
+
+  /**
+   * Parse custom headers from JSON string
+   * @param {string} headersJson - JSON string of custom headers
+   * @returns {Object} Parsed headers object
+   */
+  _parseCustomHeaders(headersJson) {
+    if (!headersJson) return {};
+    try {
+      return JSON.parse(headersJson);
+    } catch (error) {
+      console.warn('Failed to parse custom headers:', error);
+      return {};
+    }
+  }
+
+  /**
+   * Serialize custom headers to JSON string
+   * @param {Object} headers - Headers object
+   * @returns {string} JSON string
+   */
+  _serializeCustomHeaders(headers) {
+    try {
+      return JSON.stringify(headers);
+    } catch (error) {
+      console.warn('Failed to serialize custom headers:', error);
+      return '{}';
+    }
   }
 
   /**
@@ -128,6 +158,15 @@ export class SCIMConfig {
   }
 
   /**
+   * Update custom headers
+   * @param {Object} headers - Custom headers object
+   */
+  updateCustomHeaders(headers) {
+    this.customHeaders = headers;
+    this._setStorageItem(APP_CONFIG.STORAGE_KEYS.CUSTOM_HEADERS, this._serializeCustomHeaders(headers));
+  }
+
+  /**
    * Get request headers
    * @returns {Object} Headers object
    */
@@ -136,6 +175,8 @@ export class SCIMConfig {
     if (this.apiKey) {
       headers['Authorization'] = `Bearer ${this.apiKey}`;
     }
+    // Add custom headers
+    Object.assign(headers, this.customHeaders);
     return headers;
   }
 
@@ -261,6 +302,7 @@ export class SCIMClient {
     if (config.endpoint) this.config.updateEndpoint(config.endpoint);
     if (config.apiKey) this.config.updateApiKey(config.apiKey);
     if (config.useProxy !== undefined) this.config.updateUseProxy(config.useProxy);
+    if (config.customHeaders) this.config.updateCustomHeaders(config.customHeaders);
     
     this.validate();
   }

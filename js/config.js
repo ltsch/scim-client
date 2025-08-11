@@ -17,6 +17,7 @@ export const APP_CONFIG = {
     API_KEY: 'scim_api_key',
     USE_PROXY: 'scim_use_proxy',
     PROXY_URL: 'scim_proxy_url',
+    CUSTOM_HEADERS: 'scim_custom_headers',
     LAST_SECTION: 'last_section'
   },
   
