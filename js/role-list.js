@@ -123,9 +123,6 @@ class RoleListComponent extends BaseListComponent {
         }
         return String(value);
         
-      case 'active':
-        return value ? 'Active' : 'Inactive';
-        
       default:
         return super.formatCellValue(value, column);
     }

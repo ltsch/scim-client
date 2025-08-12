@@ -220,10 +220,10 @@ export const RESOURCE_CONFIG = {
   ROLE: {
     TYPE: 'Role',
     ENDPOINT: '/Roles',
-    SCHEMA: 'urn:ietf:params:scim:schemas:core:2.0:Role',
+    SCHEMA: 'urn:okta:scim:schemas:core:1.0:Role',
     SEARCH_FIELDS: ['displayName', 'description'],
-    PREFERRED_COLUMNS: ['displayName', 'description', 'active'],
-    COMMON_ATTRIBUTES: ['id', 'externalId', 'displayName', 'description', 'active']
+    PREFERRED_COLUMNS: ['displayName', 'description'],
+    COMMON_ATTRIBUTES: ['id', 'externalId', 'displayName', 'description']
   }
 };
 
