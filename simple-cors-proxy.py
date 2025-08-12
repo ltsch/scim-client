@@ -302,11 +302,20 @@ class SecureCORSProxy(BaseHTTPRequestHandler):
         try:
             # Forward relevant headers (case-insensitive retrieval)
             headers = {}
-            forward_list = ['Authorization', 'Accept', 'Content-Type', 'User-Agent', 'If-Match', 'If-None-Match', 'Origin', 'Referer']
-            for h in forward_list:
+             
+            # Standard headers that should always be forwarded
+            standard_headers = ['Authorization', 'Accept', 'Content-Type', 'User-Agent', 'If-Match', 'If-None-Match', 'Origin', 'Referer']
+            
+            # Forward standard headers
+            for h in standard_headers:
                 v = self.headers.get(h)
                 if v is not None:
                     headers[h] = v
+            
+            # Forward all custom headers (those starting with X-)
+            for header_name, header_value in self.headers.items():
+                if header_name.startswith('X-') and header_name not in headers:
+                    headers[header_name] = header_value
             # Debug which headers are forwarded (do not print sensitive values)
             print(f"[{time.strftime('%H:%M:%S')}] Forwarding headers: {', '.join(sorted(headers.keys()))}")
 

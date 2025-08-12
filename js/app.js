@@ -658,6 +658,75 @@ class SectionRenderer {
       }
     }
     
+    // EnterpriseUser Schema (using accordion)
+    if (config.schemas) {
+      const enterpriseUserSchema = config.schemas.find(schema => 
+        schema.id && schema.id.includes('enterprise:2.0:User') || 
+        schema.name && schema.name.toLowerCase().includes('enterpriseuser')
+      );
+      
+      if (enterpriseUserSchema) {
+        const enterpriseUserSchemaContainer = createElement('div', {
+          className: 'config-section'
+        });
+        
+        const enterpriseUserSchemaContent = createElement('div');
+        renderJSON(enterpriseUserSchemaContent, enterpriseUserSchema);
+        
+        createAccordion(enterpriseUserSchemaContainer, 'EnterpriseUser Schema', enterpriseUserSchemaContent, {
+          defaultOpen: false
+        });
+        
+        configContainer.appendChild(enterpriseUserSchemaContainer);
+      }
+    }
+    
+    // CerbyUser Schema (using accordion)
+    if (config.schemas) {
+      const cerbyUserSchema = config.schemas.find(schema => 
+        schema.id && schema.id.includes('cerby:2.0:User') || 
+        schema.name && schema.name.toLowerCase().includes('cerbyuser')
+      );
+      
+      if (cerbyUserSchema) {
+        const cerbyUserSchemaContainer = createElement('div', {
+          className: 'config-section'
+        });
+        
+        const cerbyUserSchemaContent = createElement('div');
+        renderJSON(cerbyUserSchemaContent, cerbyUserSchema);
+        
+        createAccordion(cerbyUserSchemaContainer, 'CerbyUser Schema', cerbyUserSchemaContent, {
+          defaultOpen: false
+        });
+        
+        configContainer.appendChild(cerbyUserSchemaContainer);
+      }
+    }
+    
+    // Role Schema (using accordion)
+    if (config.schemas) {
+      const roleSchema = config.schemas.find(schema => 
+        schema.id && schema.id.includes('Role') || 
+        schema.name && schema.name.toLowerCase().includes('role')
+      );
+      
+      if (roleSchema) {
+        const roleSchemaContainer = createElement('div', {
+          className: 'config-section'
+        });
+        
+        const roleSchemaContent = createElement('div');
+        renderJSON(roleSchemaContent, roleSchema);
+        
+        createAccordion(roleSchemaContainer, 'Role Schema', roleSchemaContent, {
+          defaultOpen: false
+        });
+        
+        configContainer.appendChild(roleSchemaContainer);
+      }
+    }
+    
     // All Schemas Summary
     if (config.schemas && config.schemas.length > 0) {
       const schemas = createElement('div', {
