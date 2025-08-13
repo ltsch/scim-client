@@ -492,6 +492,29 @@ class SectionRenderer {
       className: 'config-container'
     });
     
+    // Create high-level overview section
+    const overviewSection = createElement('div', {
+      className: 'config-overview-section'
+    });
+    
+    const overviewTitle = createElement('h1', {
+      textContent: 'Server Configuration Overview',
+      className: 'config-main-title'
+    });
+    
+    const overviewDescription = createElement('p', {
+      textContent: 'High-level server capabilities and available resources for developers.',
+      className: 'config-main-description'
+    });
+    
+    overviewSection.appendChild(overviewTitle);
+    overviewSection.appendChild(overviewDescription);
+    configContainer.appendChild(overviewSection);
+    
+    // ========================================
+    // HIGH-LEVEL DEFINITIONS SECTION
+    // ========================================
+    
     // Service Provider Config Summary
     if (config.serviceProviderConfig) {
       const spConfig = createElement('div', {
@@ -535,22 +558,6 @@ class SectionRenderer {
       configContainer.appendChild(spConfig);
     }
     
-    // Raw Service Provider Config Data (using accordion)
-    if (config.serviceProviderConfig) {
-      const rawSpConfigContainer = createElement('div', {
-        className: 'config-section'
-      });
-      
-      const rawSpConfigContent = createElement('div');
-      renderJSON(rawSpConfigContent, config.serviceProviderConfig);
-      
-      createAccordion(rawSpConfigContainer, 'Raw Service Provider Configuration Data', rawSpConfigContent, {
-        defaultOpen: false
-      });
-      
-      configContainer.appendChild(rawSpConfigContainer);
-    }
-    
     // Resource Types Summary
     if (config.resourceTypes && config.resourceTypes.length > 0) {
       const resourceTypes = createElement('div', {
@@ -573,160 +580,6 @@ class SectionRenderer {
       configContainer.appendChild(resourceTypes);
     }
     
-    // Raw Resource Types Data (using accordion)
-    if (config.resourceTypes && config.resourceTypes.length > 0) {
-      const rawResourceTypesContainer = createElement('div', {
-        className: 'config-section'
-      });
-      
-      const rawResourceTypesContent = createElement('div');
-      renderJSON(rawResourceTypesContent, config.resourceTypes);
-      
-      createAccordion(rawResourceTypesContainer, 'Raw Resource Types Data', rawResourceTypesContent, {
-        defaultOpen: false
-      });
-      
-      configContainer.appendChild(rawResourceTypesContainer);
-    }
-    
-    // User Schema (using accordion)
-    if (config.schemas) {
-      const userSchema = config.schemas.find(schema => 
-        schema.id && schema.id.includes('User') || 
-        schema.name && schema.name.toLowerCase().includes('user')
-      );
-      
-      if (userSchema) {
-        const userSchemaContainer = createElement('div', {
-          className: 'config-section'
-        });
-        
-        const userSchemaContent = createElement('div');
-        renderJSON(userSchemaContent, userSchema);
-        
-        createAccordion(userSchemaContainer, 'User Schema', userSchemaContent, {
-          defaultOpen: false
-        });
-        
-        configContainer.appendChild(userSchemaContainer);
-      }
-    }
-    
-    // Group Schema (using accordion)
-    if (config.schemas) {
-      const groupSchema = config.schemas.find(schema => 
-        schema.id && schema.id.includes('Group') || 
-        schema.name && schema.name.toLowerCase().includes('group')
-      );
-      
-      if (groupSchema) {
-        const groupSchemaContainer = createElement('div', {
-          className: 'config-section'
-        });
-        
-        const groupSchemaContent = createElement('div');
-        renderJSON(groupSchemaContent, groupSchema);
-        
-        createAccordion(groupSchemaContainer, 'Group Schema', groupSchemaContent, {
-          defaultOpen: false
-        });
-        
-        configContainer.appendChild(groupSchemaContainer);
-      }
-    }
-    
-    // Entitlement Schema (using accordion)
-    if (config.schemas) {
-      const entitlementSchema = config.schemas.find(schema => 
-        schema.id && schema.id.includes('Entitlement') || 
-        schema.name && schema.name.toLowerCase().includes('entitlement')
-      );
-      
-      if (entitlementSchema) {
-        const entitlementSchemaContainer = createElement('div', {
-          className: 'config-section'
-        });
-        
-        const entitlementSchemaContent = createElement('div');
-        renderJSON(entitlementSchemaContent, entitlementSchema);
-        
-        createAccordion(entitlementSchemaContainer, 'Entitlement Schema', entitlementSchemaContent, {
-          defaultOpen: false
-        });
-        
-        configContainer.appendChild(entitlementSchemaContainer);
-      }
-    }
-    
-    // EnterpriseUser Schema (using accordion)
-    if (config.schemas) {
-      const enterpriseUserSchema = config.schemas.find(schema => 
-        schema.id && schema.id.includes('enterprise:2.0:User') || 
-        schema.name && schema.name.toLowerCase().includes('enterpriseuser')
-      );
-      
-      if (enterpriseUserSchema) {
-        const enterpriseUserSchemaContainer = createElement('div', {
-          className: 'config-section'
-        });
-        
-        const enterpriseUserSchemaContent = createElement('div');
-        renderJSON(enterpriseUserSchemaContent, enterpriseUserSchema);
-        
-        createAccordion(enterpriseUserSchemaContainer, 'EnterpriseUser Schema', enterpriseUserSchemaContent, {
-          defaultOpen: false
-        });
-        
-        configContainer.appendChild(enterpriseUserSchemaContainer);
-      }
-    }
-    
-    // CerbyUser Schema (using accordion)
-    if (config.schemas) {
-      const cerbyUserSchema = config.schemas.find(schema => 
-        schema.id && schema.id.includes('cerby:2.0:User') || 
-        schema.name && schema.name.toLowerCase().includes('cerbyuser')
-      );
-      
-      if (cerbyUserSchema) {
-        const cerbyUserSchemaContainer = createElement('div', {
-          className: 'config-section'
-        });
-        
-        const cerbyUserSchemaContent = createElement('div');
-        renderJSON(cerbyUserSchemaContent, cerbyUserSchema);
-        
-        createAccordion(cerbyUserSchemaContainer, 'CerbyUser Schema', cerbyUserSchemaContent, {
-          defaultOpen: false
-        });
-        
-        configContainer.appendChild(cerbyUserSchemaContainer);
-      }
-    }
-    
-    // Role Schema (using accordion)
-    if (config.schemas) {
-      const roleSchema = config.schemas.find(schema => 
-        schema.id && schema.id.includes('Role') || 
-        schema.name && schema.name.toLowerCase().includes('role')
-      );
-      
-      if (roleSchema) {
-        const roleSchemaContainer = createElement('div', {
-          className: 'config-section'
-        });
-        
-        const roleSchemaContent = createElement('div');
-        renderJSON(roleSchemaContent, roleSchema);
-        
-        createAccordion(roleSchemaContainer, 'Role Schema', roleSchemaContent, {
-          defaultOpen: false
-        });
-        
-        configContainer.appendChild(roleSchemaContainer);
-      }
-    }
-    
     // All Schemas Summary
     if (config.schemas && config.schemas.length > 0) {
       const schemas = createElement('div', {
@@ -747,22 +600,6 @@ class SectionRenderer {
       `;
       
       configContainer.appendChild(schemas);
-    }
-    
-    // Raw Schemas Data (using accordion)
-    if (config.schemas && config.schemas.length > 0) {
-      const rawSchemasContainer = createElement('div', {
-        className: 'config-section'
-      });
-      
-      const rawSchemasContent = createElement('div');
-      renderJSON(rawSchemasContent, config.schemas);
-      
-      createAccordion(rawSchemasContainer, 'Raw Schemas Data', rawSchemasContent, {
-        defaultOpen: false
-      });
-      
-      configContainer.appendChild(rawSchemasContainer);
     } else {
       // Show message when schemas are not available
       const noSchemasContainer = createElement('div', {
@@ -783,6 +620,224 @@ class SectionRenderer {
       `;
       
       configContainer.appendChild(noSchemasContainer);
+    }
+    
+    // ========================================
+    // RAW SCHEMA DATA SECTION
+    // ========================================
+    
+    // Create raw data section header
+    const rawDataSection = createElement('div', {
+      className: 'config-raw-section'
+    });
+    
+    const rawDataTitle = createElement('h1', {
+      textContent: 'Raw Schema Data',
+      className: 'config-main-title'
+    });
+    
+    const rawDataDescription = createElement('p', {
+      textContent: 'Detailed JSON schema data for developers who need to examine the raw server responses.',
+      className: 'config-main-description'
+    });
+    
+    rawDataSection.appendChild(rawDataTitle);
+    rawDataSection.appendChild(rawDataDescription);
+    configContainer.appendChild(rawDataSection);
+    
+    // Raw Service Provider Config Data
+    if (config.serviceProviderConfig) {
+      const rawSpConfigContainer = createElement('div', {
+        className: 'config-section'
+      });
+      
+      const title = createElement('h2', {
+        textContent: 'Service Provider Configuration Data'
+      });
+      
+      const rawSpConfigContent = createElement('div');
+      renderJSON(rawSpConfigContent, config.serviceProviderConfig);
+      
+      rawSpConfigContainer.appendChild(title);
+      rawSpConfigContainer.appendChild(rawSpConfigContent);
+      configContainer.appendChild(rawSpConfigContainer);
+    }
+    
+    // Raw Resource Types Data
+    if (config.resourceTypes && config.resourceTypes.length > 0) {
+      const rawResourceTypesContainer = createElement('div', {
+        className: 'config-section'
+      });
+      
+      const title = createElement('h2', {
+        textContent: 'Resource Types Data'
+      });
+      
+      const rawResourceTypesContent = createElement('div');
+      renderJSON(rawResourceTypesContent, config.resourceTypes);
+      
+      rawResourceTypesContainer.appendChild(title);
+      rawResourceTypesContainer.appendChild(rawResourceTypesContent);
+      configContainer.appendChild(rawResourceTypesContainer);
+    }
+    
+    // Raw Schemas Data
+    if (config.schemas && config.schemas.length > 0) {
+      const rawSchemasContainer = createElement('div', {
+        className: 'config-section'
+      });
+      
+      const title = createElement('h2', {
+        textContent: 'All Schemas Data'
+      });
+      
+      const rawSchemasContent = createElement('div');
+      renderJSON(rawSchemasContent, config.schemas);
+      
+      rawSchemasContainer.appendChild(title);
+      rawSchemasContainer.appendChild(rawSchemasContent);
+      configContainer.appendChild(rawSchemasContainer);
+    }
+    
+    // Individual Schema Data (directly displayed)
+    if (config.schemas) {
+      // User Schema
+      const userSchema = config.schemas.find(schema => 
+        schema.id && schema.id.includes('User') || 
+        schema.name && schema.name.toLowerCase().includes('user')
+      );
+      
+      if (userSchema) {
+        const userSchemaContainer = createElement('div', {
+          className: 'config-section'
+        });
+        
+        const title = createElement('h2', {
+          textContent: 'User Schema Data'
+        });
+        
+        const userSchemaContent = createElement('div');
+        renderJSON(userSchemaContent, userSchema);
+        
+        userSchemaContainer.appendChild(title);
+        userSchemaContainer.appendChild(userSchemaContent);
+        configContainer.appendChild(userSchemaContainer);
+      }
+      
+      // Group Schema
+      const groupSchema = config.schemas.find(schema => 
+        schema.id && schema.id.includes('Group') || 
+        schema.name && schema.name.toLowerCase().includes('group')
+      );
+      
+      if (groupSchema) {
+        const groupSchemaContainer = createElement('div', {
+          className: 'config-section'
+        });
+        
+        const title = createElement('h2', {
+          textContent: 'Group Schema Data'
+        });
+        
+        const groupSchemaContent = createElement('div');
+        renderJSON(groupSchemaContent, groupSchema);
+        
+        groupSchemaContainer.appendChild(title);
+        groupSchemaContainer.appendChild(groupSchemaContent);
+        configContainer.appendChild(groupSchemaContainer);
+      }
+      
+      // Entitlement Schema
+      const entitlementSchema = config.schemas.find(schema => 
+        schema.id && schema.id.includes('Entitlement') || 
+        schema.name && schema.name.toLowerCase().includes('entitlement')
+      );
+      
+      if (entitlementSchema) {
+        const entitlementSchemaContainer = createElement('div', {
+          className: 'config-section'
+        });
+        
+        const title = createElement('h2', {
+          textContent: 'Entitlement Schema Data'
+        });
+        
+        const entitlementSchemaContent = createElement('div');
+        renderJSON(entitlementSchemaContent, entitlementSchema);
+        
+        entitlementSchemaContainer.appendChild(title);
+        entitlementSchemaContainer.appendChild(entitlementSchemaContent);
+        configContainer.appendChild(entitlementSchemaContainer);
+      }
+      
+      // Role Schema
+      const roleSchema = config.schemas.find(schema => 
+        schema.id && schema.id.includes('Role') || 
+        schema.name && schema.name.toLowerCase().includes('role')
+      );
+      
+      if (roleSchema) {
+        const roleSchemaContainer = createElement('div', {
+          className: 'config-section'
+        });
+        
+        const title = createElement('h2', {
+          textContent: 'Role Schema Data'
+        });
+        
+        const roleSchemaContent = createElement('div');
+        renderJSON(roleSchemaContent, roleSchema);
+        
+        roleSchemaContainer.appendChild(title);
+        roleSchemaContainer.appendChild(roleSchemaContent);
+        configContainer.appendChild(roleSchemaContainer);
+      }
+      
+      // EnterpriseUser Schema
+      const enterpriseUserSchema = config.schemas.find(schema => 
+        schema.id && schema.id.includes('enterprise:2.0:User') || 
+        schema.name && schema.name.toLowerCase().includes('enterpriseuser')
+      );
+      
+      if (enterpriseUserSchema) {
+        const enterpriseUserSchemaContainer = createElement('div', {
+          className: 'config-section'
+        });
+        
+        const title = createElement('h2', {
+          textContent: 'EnterpriseUser Schema Data'
+        });
+        
+        const enterpriseUserSchemaContent = createElement('div');
+        renderJSON(enterpriseUserSchemaContent, enterpriseUserSchema);
+        
+        enterpriseUserSchemaContainer.appendChild(title);
+        enterpriseUserSchemaContainer.appendChild(enterpriseUserSchemaContent);
+        configContainer.appendChild(enterpriseUserSchemaContainer);
+      }
+      
+      // CerbyUser Schema
+      const cerbyUserSchema = config.schemas.find(schema => 
+        schema.id && schema.id.includes('cerby:2.0:User') || 
+        schema.name && schema.name.toLowerCase().includes('cerbyuser')
+      );
+      
+      if (cerbyUserSchema) {
+        const cerbyUserSchemaContainer = createElement('div', {
+          className: 'config-section'
+        });
+        
+        const title = createElement('h2', {
+          textContent: 'CerbyUser Schema Data'
+        });
+        
+        const cerbyUserSchemaContent = createElement('div');
+        renderJSON(cerbyUserSchemaContent, cerbyUserSchema);
+        
+        cerbyUserSchemaContainer.appendChild(title);
+        cerbyUserSchemaContainer.appendChild(cerbyUserSchemaContent);
+        configContainer.appendChild(cerbyUserSchemaContainer);
+      }
     }
     
     container.appendChild(configContainer);

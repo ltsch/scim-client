@@ -2404,6 +2404,33 @@
   line-height: 1.5;
 }
 
+/* Config overview and raw data section headers */
+.config-overview-section,
+.config-raw-section {
+  border-bottom: 3px solid #007bff;
+  padding-bottom: 1rem;
+  margin-bottom: 2rem;
+}
+
+.config-main-title {
+  font-size: 2rem;
+  font-weight: 700;
+  color: #2d3748;
+  margin: 0 0 0.5rem 0;
+}
+
+.config-main-description {
+  font-size: 1.1rem;
+  color: #718096;
+  margin: 0;
+  line-height: 1.6;
+}
+
+.config-raw-section {
+  margin-top: 3rem;
+  border-color: #6c757d;
+}
+
 /* Responsive design for config sections */
 @media (max-width: 768px) {
   .config-section {
@@ -2413,6 +2440,14 @@
   
   .config-section h2 {
     font-size: 1.25rem;
+  }
+  
+  .config-main-title {
+    font-size: 1.5rem;
+  }
+  
+  .config-main-description {
+    font-size: 1rem;
   }
   
   .resource-types,
