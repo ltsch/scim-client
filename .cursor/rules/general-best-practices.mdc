@@ -1,0 +1,426 @@
+# General Best Practices
+
+## 🚨 **CRITICAL SAFETY RULE: NEVER DESTROY WORK**
+
+**BEFORE ANY DESTRUCTIVE OPERATION (git checkout, git reset, rm -rf, etc.):**
+1. **PAUSE FOR 5 SECONDS** and think about what you're about to do
+2. **ASK YOURSELF**: "Will this destroy valuable work?"
+3. **IF YES**: Stop immediately and ask the user for explicit confirmation
+4. **NEVER** attempt git checkout main, git reset --hard, or similar destructive commands
+5. **NEVER** delete files without understanding their purpose first
+6. **ALWAYS** verify you're on the correct branch before any git operations
+
+**DESTRUCTIVE COMMANDS THAT REQUIRE EXPLICIT USER CONFIRMATION:**
+- `git checkout main` (or any branch switch that could overwrite work)
+- `git reset --hard`
+- `git clean -fd`
+- `rm -rf` on project directories
+- Any command that could destroy significant work
+
+**IMMEDIATE ACTIONS IF YOU ALMOST DESTROY WORK:**
+1. **STOP** the command immediately
+2. **APOLOGIZE** for the dangerous action
+3. **VERIFY** all work is still intact
+4. **DOCUMENT** the mistake to prevent recurrence
+5. **ASK** the user what they want to do next
+
+## 🏗️ **ARCHITECTURE PRINCIPLES**
+
+### SEPARATION OF CONCERNS
+- **Each module has a single responsibility** - no monolithic files
+- **Clear interfaces between components** - well-defined contracts
+- **Dependency injection** - avoid tight coupling
+- **No shared state between unrelated components** - prevent data leakage
+
+### CONFIGURATION MANAGEMENT
+- **Static configuration in code/config files** - never store capabilities in database
+- **Database only for persistent instance-specific data** - not for system capabilities
+- **Environment variables for deployment-specific settings** - not for business logic
+- **Configuration merging when needed** - combine static + dynamic configs
+
+### ISOLATION PATTERNS
+- **Complete isolation between different components** - no cross-contamination
+- **Unique identifiers in cache keys** - include all isolation factors
+- **Component-specific validation** - each component validates its own data
+- **No data leakage between components** - strict boundaries
+
+## 🔧 **CORE SYSTEM REPLACEMENT**
+
+### SYSTEMATIC APPROACH
+When replacing or significantly refactoring core systems:
+
+#### STEP 1: IDENTIFY ALL DEPENDENCIES
+```bash
+# Search for imports
+grep -r "from \.\.system import" .
+grep -r "import system" .
+
+# Search for function calls
+grep -r "get_system" .
+grep -r "SystemClass" .
+
+# Search for class references
+grep -r "class.*System" .
+```
+
+#### STEP 2: DOCUMENT EVERY REFERENCE
+Create a checklist of all files that need updates:
+```markdown
+## System Replacement Checklist
+- [ ] app/main.py - Import and function calls
+- [ ] app/components/feature.py - Import and function calls
+- [ ] tests/test_feature.py - Import and function calls
+```
+
+#### STEP 3: EXECUTE SYSTEMATICALLY
+- **One file at a time** - don't update multiple files simultaneously
+- **Test after each file** - verify the file works before moving to next
+- **Commit frequently** - save progress regularly
+- **Rollback if needed** - be prepared to revert changes
+
+### COMMON MISTAKES TO AVOID
+- ❌ **Skip dependency analysis** - always identify all references first
+- ❌ **Update multiple files simultaneously** - do one file at a time
+- ❌ **Assume it will work** - test after every change
+- ❌ **Ignore import errors** - they indicate broken references
+- ❌ **Remove old system before new system works** - keep both until migration complete
+
+## 🧪 **TESTING BEST PRACTICES**
+
+### MANDATORY TESTING STANDARDS
+- **Every function must have unit tests** - no exceptions
+- **Integration tests for all major functionality** - test real interactions
+- **End-to-end tests for complete workflows** - test full user journeys
+- **Test isolation** - each test must be independent
+- **No hardcoded values** - use centralized test configuration
+
+### TEST ARCHITECTURE PATTERNS
+```python
+# ✅ CORRECT: Use centralized test configuration
+from app.test_config import TestConfig
+
+test_config = TestConfig()
+test_data = test_config.get_test_data("feature")
+
+# ❌ WRONG: Hardcoded values
+test_data = {"id": "12345", "name": "test"}  # Hardcoded
+```
+
+### TEST ISOLATION PATTERNS
+```python
+# ✅ CORRECT: Independent test with proper setup/teardown
+class TestFeature:
+    def setup_method(self):
+        self.feature = Feature(test_config)
+        self.test_data = self.create_test_data()
+    
+    def teardown_method(self):
+        self.cleanup_test_data()
+    
+    def test_feature_function(self):
+        result = self.feature.process(self.test_data)
+        assert result is not None
+
+# ❌ WRONG: Tests that depend on each other
+class TestFeature:
+    def test_create(self):
+        self.created_id = self.feature.create(test_data)  # Shared state
+    
+    def test_get(self):
+        result = self.feature.get(self.created_id)  # Depends on previous test
+```
+
+### ASSERTION PATTERNS
+```python
+# ✅ CORRECT: Use assert statements
+def test_feature():
+    result = process_data(test_data)
+    assert result.id is not None
+    assert result.status == "success"
+    assert isinstance(result.data, dict)
+
+# ❌ WRONG: Return boolean values
+def test_feature():
+    result = process_data(test_data)
+    return result.id is not None  # Wrong - should use assert
+```
+
+### ERROR TESTING
+```python
+# ✅ CORRECT: Test error conditions
+def test_invalid_input():
+    with pytest.raises(ValueError) as exc_info:
+        process_data(invalid_data)
+    
+    assert "Invalid input" in str(exc_info.value)
+
+# ❌ WRONG: Only test happy path
+def test_feature():
+    result = process_data(valid_data)
+    assert result is not None  # Only tests success case
+```
+
+## 📁 **FILE MANAGEMENT**
+
+### TEMPORARY FILE MANAGEMENT
+- **All temporary files in designated temp directory** - never in project root
+- **Organized subdirectories** - use descriptive names
+- **Proper cleanup required** - always clean up temporary files
+- **Version control ignored** - temp directories should be in `.gitignore`
+
+```python
+# ✅ CORRECT: Proper temp file creation
+def create_temp_file():
+    temp_dir = "temp/test_files"
+    os.makedirs(temp_dir, exist_ok=True)
+    
+    temp_file = os.path.join(temp_dir, f"data_{timestamp}.json")
+    with open(temp_file, "w") as f:
+        json.dump(data, f)
+    
+    return temp_file
+
+def cleanup_temp_file(temp_file):
+    if os.path.exists(temp_file):
+        os.remove(temp_file)
+        
+    temp_dir = os.path.dirname(temp_file)
+    if os.path.exists(temp_dir) and not os.listdir(temp_dir):
+        os.rmdir(temp_dir)
+
+# ❌ WRONG: Improper temp file creation
+temp_file = "data.json"  # Wrong location
+with open(temp_file, "w") as f:
+    json.dump(data, f)
+# No cleanup - file remains in project root
+```
+
+### CLEANUP PATTERNS
+```python
+# ✅ CORRECT: Automatic cleanup with context manager
+class TempFileManager:
+    def __init__(self, subdirectory):
+        self.temp_dir = f"temp/{subdirectory}"
+        self.created_files = []
+        os.makedirs(self.temp_dir, exist_ok=True)
+    
+    def create_file(self, filename, data):
+        filepath = os.path.join(self.temp_dir, filename)
+        with open(filepath, "w") as f:
+            json.dump(data, f)
+        self.created_files.append(filepath)
+        return filepath
+    
+    def cleanup(self):
+        for filepath in self.created_files:
+            if os.path.exists(filepath):
+                os.remove(filepath)
+        
+        if os.path.exists(self.temp_dir) and not os.listdir(self.temp_dir):
+            os.rmdir(self.temp_dir)
+
+# Usage with context manager
+def test_with_temp_files():
+    with TempFileManager("test_data") as temp_mgr:
+        file1 = temp_mgr.create_file("input.json", input_data)
+        file2 = temp_mgr.create_file("output.json", output_data)
+        
+        result = process_files(file1, file2)
+        assert result is not None
+    
+    # Automatic cleanup when context exits
+```
+
+## 🔍 **DEBUGGING AND TROUBLESHOOTING**
+
+### SYSTEMATIC DEBUGGING APPROACH
+1. **Reproduce the issue** - create minimal test case
+2. **Check logs and error messages** - read them carefully
+3. **Verify assumptions** - don't assume anything works
+4. **Test with real data** - don't rely on mock data
+5. **Document the solution** - record what fixed it
+
+### COMMON DEBUGGING MISTAKES
+- ❌ **Assume it works** - always test with real data
+- ❌ **Ignore error messages** - read them carefully
+- ❌ **Skip logging** - add proper logging for debugging
+- ❌ **No error handling** - handle errors gracefully
+- ❌ **No rollback plan** - always have a way to revert
+
+### ERROR HANDLING PATTERNS
+```python
+# ✅ CORRECT: Proper error handling
+def process_data(data):
+    try:
+        result = complex_operation(data)
+        return result
+    except ValueError as e:
+        logger.error(f"Invalid data: {e}")
+        raise HTTPException(status_code=400, detail=str(e))
+    except ConnectionError as e:
+        logger.error(f"Connection failed: {e}")
+        raise HTTPException(status_code=503, detail="Service unavailable")
+    except Exception as e:
+        logger.error(f"Unexpected error: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+# ❌ WRONG: Poor error handling
+def process_data(data):
+    result = complex_operation(data)  # No error handling
+    return result
+```
+
+## 📊 **PERFORMANCE AND MONITORING**
+
+### PERFORMANCE TESTING
+```python
+# ✅ CORRECT: Test performance
+import time
+
+def test_performance():
+    start_time = time.time()
+    result = process_large_dataset()
+    end_time = time.time()
+    
+    response_time = end_time - start_time
+    assert response_time < 5.0  # Should complete within 5 seconds
+    assert result is not None
+
+def test_cache_performance():
+    # First call (cache miss)
+    start_time = time.time()
+    result1 = get_data()
+    first_call_time = time.time() - start_time
+    
+    # Second call (cache hit)
+    start_time = time.time()
+    result2 = get_data()
+    second_call_time = time.time() - start_time
+    
+    # Cache should be faster
+    assert second_call_time < first_call_time
+    assert second_call_time < 0.1  # Cache hit should be very fast
+```
+
+### MEMORY MANAGEMENT
+```python
+# ✅ CORRECT: Test memory usage
+import psutil
+import os
+
+def test_memory_usage():
+    process = psutil.Process(os.getpid())
+    initial_memory = process.memory_info().rss
+    
+    # Perform operation
+    result = process_large_data()
+    
+    final_memory = process.memory_info().rss
+    memory_increase = final_memory - initial_memory
+    
+    # Memory increase should be reasonable
+    assert memory_increase < 100 * 1024 * 1024  # Less than 100MB
+```
+
+## 📝 **DOCUMENTATION**
+
+### CODE DOCUMENTATION
+```python
+# ✅ CORRECT: Documented function
+def process_user_data(user_data: dict) -> dict:
+    """
+    Process user data and return standardized format.
+    
+    Args:
+        user_data: Raw user data dictionary
+        
+    Returns:
+        Processed user data in standardized format
+        
+    Raises:
+        ValueError: If user_data is invalid
+        ConnectionError: If external service is unavailable
+    """
+    if not user_data:
+        raise ValueError("User data cannot be empty")
+    
+    # Process the data
+    processed_data = standardize_user_data(user_data)
+    
+    return processed_data
+
+# ❌ WRONG: Undocumented function
+def process_user_data(user_data):
+    processed_data = standardize_user_data(user_data)
+    return processed_data
+```
+
+### TEST DOCUMENTATION
+```python
+# ✅ CORRECT: Documented test
+def test_user_data_processing():
+    """
+    Test that user data processing works with valid input data.
+    
+    This test verifies:
+    - User data can be processed with valid input
+    - Processed data has correct structure
+    - Required fields are present
+    - Data types are correct
+    """
+    user_data = generate_valid_user_data()
+    result = process_user_data(user_data)
+    
+    assert result is not None
+    assert "id" in result
+    assert "name" in result
+    assert isinstance(result["id"], str)
+    assert isinstance(result["name"], str)
+```
+
+## 🚨 **CRITICAL REMINDERS**
+
+### NEVER DO THESE
+1. **NEVER destroy valuable work** - always pause and think before destructive operations
+2. **NEVER store system capabilities in database** - use static configuration
+3. **NEVER create interdependent tests** - each test must be independent
+4. **NEVER skip error testing** - always test failure scenarios
+5. **NEVER place temp files in project root** - use designated temp directory
+6. **NEVER assume it works** - always test with real data
+7. **NEVER skip documentation** - document purpose and behavior
+8. **NEVER ignore performance** - test response times and resource usage
+
+### ALWAYS DO THESE
+1. **ALWAYS use systematic approaches** - identify all dependencies before major changes
+2. **ALWAYS test frequently** - after every significant change
+3. **ALWAYS clean up temporary files** - remove them after use
+4. **ALWAYS handle errors gracefully** - provide meaningful error messages
+5. **ALWAYS document decisions** - especially painful lessons learned
+6. **ALWAYS use proper isolation** - prevent data leakage between components
+7. **ALWAYS verify assumptions** - test with real data, not just mocks
+8. **ALWAYS have a rollback plan** - be prepared to revert changes
+
+## 🎯 **SUCCESS METRICS**
+
+### QUALITY METRICS
+- **Test coverage** - maintain 90%+ code coverage
+- **Performance** - maintain or improve response times
+- **Memory usage** - monitor and optimize memory consumption
+- **Error rates** - minimize production errors
+- **Documentation** - keep documentation up to date
+
+### DEVELOPMENT METRICS
+- **Build success rate** - maintain 95%+ successful builds
+- **Test pass rate** - maintain 95%+ test pass rate
+- **Code review time** - minimize time to review and merge
+- **Bug discovery rate** - catch issues early in development
+- **Deployment success rate** - maintain 99%+ successful deployments
+
+---
+
+**Remember**: These practices are universal and apply to any software project. Adapt them to your specific technology stack and requirements, but never compromise on the core principles of safety, quality, and maintainability.
+---
+description: General Best Practices - Universal development guidelines for any project
+globs: ["**/*.py", "**/*.js", "**/*.ts", "**/*.java", "**/*.go", "**/*.rs"]
+alwaysApply: true
+---

@@ -182,19 +182,19 @@ class SecureCORSProxy(BaseHTTPRequestHandler):
             return False
     
     def _extract_target_url(self, path):
-        """Extract target URL from path - only accepts /proxy/ prefix with valid HTTPS URL
+        """Extract target URL from path - accepts /proxy/ prefix with valid HTTP or HTTPS URL
         
-        This function expects paths in the format: /proxy/https://example.com/endpoint
+        This function expects paths in the format: /proxy/http://example.com/endpoint or /proxy/https://example.com/endpoint
         It validates that:
         1. Path starts with /proxy/
-        2. URL after /proxy/ is a valid HTTPS URL
-        3. URL matches the HTTPS regex pattern for security
+        2. URL after /proxy/ is a valid HTTP or HTTPS URL
+        3. URL matches the HTTP/HTTPS regex pattern for security
         
         Args:
-            path: The request path (e.g., '/proxy/https://api.example.com/endpoint')
+            path: The request path (e.g., '/proxy/http://192.168.0.239:6007/endpoint')
             
         Returns:
-            str: The extracted HTTPS URL, or None if validation fails
+            str: The extracted HTTP or HTTPS URL, or None if validation fails
         """
         # Step 1: Check if path starts with /proxy/
         if not path.startswith('/proxy/'):
@@ -204,12 +204,14 @@ class SecureCORSProxy(BaseHTTPRequestHandler):
         # Step 2: Extract URL after /proxy/
         url = path[7:]  # Remove '/proxy/'
         
-        # Step 3: Validate URL with regex (HTTPS only)
+        # Step 3: Validate URL with regex (HTTP or HTTPS)
         import re
-        url_pattern = r'^https:\/\/(?:www\.)?[-a-zA-Z0-9@:%._\+~#=]{1,256}\.[a-zA-Z0-9()]{1,6}\b(?:[-a-zA-Z0-9()@:%_\+.~#?&\/=]*)$'
+        # Updated pattern to accept both http and https, and support IP addresses with ports
+        # Simplified pattern that properly handles ports and paths
+        url_pattern = r'^(http|https):\/\/([^\/\s:]+)(:\d+)?(\/.*)?$'
         
         if not re.match(url_pattern, url):
-            print(f"[DEBUG] URL does not match HTTPS pattern: '{url}'", flush=True)
+            print(f"[DEBUG] URL does not match HTTP/HTTPS pattern: '{url}'", flush=True)
             return None
         
         return url
@@ -273,7 +275,7 @@ class SecureCORSProxy(BaseHTTPRequestHandler):
             self.send_header('Access-Control-Allow-Origin', '*')
             self.send_header('Content-Type', 'text/plain')
             self.end_headers()
-            self.wfile.write(b"Invalid proxy path. Must start with /proxy/ followed by a valid HTTPS URL")
+            self.wfile.write(b"Invalid proxy path. Must start with /proxy/ followed by a valid HTTP or HTTPS URL")
             return
         
         # Validate target URL
@@ -387,7 +389,7 @@ class SecureCORSProxy(BaseHTTPRequestHandler):
             self.send_header('Access-Control-Allow-Origin', '*')
             self.send_header('Content-Type', 'text/plain')
             self.end_headers()
-            self.wfile.write(b"Invalid proxy path. Must start with /proxy/ followed by a valid HTTPS URL")
+            self.wfile.write(b"Invalid proxy path. Must start with /proxy/ followed by a valid HTTP or HTTPS URL")
             return
         
         # Validate target URL

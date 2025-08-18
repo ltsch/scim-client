@@ -684,19 +684,26 @@ export async function loadAllowedTargets() {
 }
 
 /**
- * Check if hostname matches a list of patterns (exact, wildcard, CIDR ignored in frontend)
- * Note: CIDR evaluation is enforced in the proxy; frontend ignores CIDR for simplicity.
+ * Check if hostname matches a list of patterns (exact, wildcard, CIDR for IP addresses)
+ * Note: CIDR evaluation is now supported in frontend for IP addresses
  * @param {string} hostname
  * @param {Array<string>} patterns
  */
 export function isHostAllowedByPatterns(hostname, patterns) {
   if (!hostname || !Array.isArray(patterns) || patterns.length === 0) return false;
   const h = String(hostname).toLowerCase();
+  
   for (const raw of patterns) {
     const pat = String(raw).toLowerCase().trim();
     if (!pat) continue;
-    // Skip CIDR patterns in frontend (proxy enforces)
-    if (pat.includes('/')) continue;
+    
+    // Handle CIDR patterns for IP addresses
+    if (pat.includes('/')) {
+      if (isIPInCIDR(h, pat)) return true;
+      continue;
+    }
+    
+    // Handle wildcard patterns
     if (pat.startsWith('*.')) {
       const base = pat.slice(2);
       if (h === base || h.endsWith('.' + base)) return true;
@@ -705,6 +712,39 @@ export function isHostAllowedByPatterns(hostname, patterns) {
     }
   }
   return false;
+}
+
+/**
+ * Check if IP address is within CIDR range
+ * @param {string} ip - IP address to check
+ * @param {string} cidr - CIDR notation (e.g., "192.168.0.0/16")
+ * @returns {boolean} True if IP is in CIDR range
+ */
+function isIPInCIDR(ip, cidr) {
+  try {
+    // Simple CIDR validation for common private ranges
+    const [network, bits] = cidr.split('/');
+    const bitCount = parseInt(bits);
+    
+    // Convert IP to numeric representation
+    const ipParts = ip.split('.').map(Number);
+    const networkParts = network.split('.').map(Number);
+    
+    if (ipParts.length !== 4 || networkParts.length !== 4) return false;
+    
+    // Calculate network mask
+    const mask = (0xFFFFFFFF << (32 - bitCount)) >>> 0;
+    
+    // Convert IPs to 32-bit integers
+    const ipNum = (ipParts[0] << 24) + (ipParts[1] << 16) + (ipParts[2] << 8) + ipParts[3];
+    const networkNum = (networkParts[0] << 24) + (networkParts[1] << 16) + (networkParts[2] << 8) + networkParts[3];
+    
+    // Check if IP is in network range
+    return (ipNum & mask) === (networkNum & mask);
+  } catch (error) {
+    console.warn('CIDR validation error:', error);
+    return false;
+  }
 }
 
 /**
